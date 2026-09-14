@@ -2,86 +2,10 @@
 //*********************************************************************
 const simulation = {
     loop() { }, //main game loop, gets set to normal or testing loop
-    // normalLoop() {
-    //     try {
-    //         simulation.gravity();
-    //         Engine.update(engine, simulation.delta);
-    //         simulation.wipe();
-    //         simulation.textLog();
-    //         if (m.onGround) {
-    //             m.groundControl()
-    //         } else {
-    //             m.airControl()
-    //         }
-    //         m.move();
-    //         m.look();
-    //         simulation.camera();
-    //         level.custom();
-    //         powerUps.do();
-    //         mobs.draw();
-    //         simulation.draw.cons();
-    //         simulation.draw.body();
-    //         if (!m.isTimeDilated) mobs.loop();
-    //         mobs.healthBar();
-    //         m.draw();
-    //         m.hold();
-    //         level.customTopLayer();
-    //         simulation.draw.drawMapPath();
-    //         b.fire();
-    //         b.bulletRemove();
-    //         b.bulletDraw();
-    //         if (!m.isTimeDilated) b.bulletDo();
-    //         simulation.drawCircle();
-    //         simulation.runEphemera();
-    //         ctx.restore();
-    //     } catch (error) {
-    //         simulation.inGameConsole(`<strong style='color:red;'>ERROR:</strong> ${(error.stack && error.stack.replace(/\n/g, "<br>")) || (error.message + ` <u>${error.filename}:${error.lineno}</u>`)}`);
-    //     } finally {
-    //         simulation.drawCursor();
-    //     }
-    // },
-    // testingLoop() {
-    //     try {
-    //         simulation.gravity();
-    //         Engine.update(engine, simulation.delta);
-    //         simulation.wipe();
-    //         simulation.textLog();
-    //         if (m.onGround) {
-    //             m.groundControl()
-    //         } else {
-    //             m.airControl()
-    //         }
-    //         m.move();
-    //         m.look();
-    //         simulation.camera();
-    //         level.custom();
-    //         m.draw();
-    //         m.hold();
-    //         level.customTopLayer();
-    //         simulation.draw.wireFrame();
-    //         if (input.fire && m.fireCDcycle < m.cycle) {
-    //             m.fireCDcycle = m.cycle + 15; //fire cooldown       
-    //             for (let i = 0, len = mob.length; i < len; i++) {
-    //                 if (Vector.magnitudeSquared(Vector.sub(mob[i].position, simulation.mouseInGame)) < mob[i].radius * mob[i].radius) {
-    //                     console.log(mob[i])
-    //                 }
-    //             }
-    //         }
-    //         simulation.draw.cons();
-    //         simulation.draw.testing();
-    //         simulation.drawCircle();
-    //         simulation.runEphemera();
-    //         simulation.constructCycle()
-    //     } catch (error) {
-    //         simulation.inGameConsole(`<strong style='color:red;'>ERROR:</strong> ${(error.stack && error.stack.replace(/\n/g, "<br>")) || (error.message + ` <u>${error.filename}:${error.lineno}</u>`)}`);
-    //     } finally {
-    //         ctx.restore();
-    //         simulation.testingOutput();
-    //         simulation.drawCursor();
-    //     }
-    // },
     normalLoop() {
+        level.exit.isDrawPending = false;
         simulation.gravity();
+        // level.mirrorDoors.update();
         Engine.update(engine, simulation.delta);
         simulation.wipe();
         simulation.textLog();
@@ -96,10 +20,9 @@ const simulation = {
         level.custom();
         powerUps.do();
         mobs.draw();
-        simulation.draw.cons();
+        // simulation.draw.cons();
         simulation.draw.body();
         if (!m.isTimeDilated) mobs.loop();
-        mobs.healthBar();
         m.draw();
         m.hold();
         level.customTopLayer();
@@ -110,11 +33,15 @@ const simulation = {
         if (!m.isTimeDilated) b.bulletDo();
         simulation.drawCircle();
         simulation.runEphemera();
+        // level.mirrorDoorsDraw();
+        if (level.exit.isDrawPending) level.exit.drawAndCheck(true);
         ctx.restore();
         simulation.drawCursor();
     },
     testingLoop() {
+        level.exit.isDrawPending = false;
         simulation.gravity();
+        // level.mirrorDoors.update();
         Engine.update(engine, simulation.delta);
         simulation.wipe();
         simulation.textLog();
@@ -131,6 +58,7 @@ const simulation = {
         m.hold();
         level.customTopLayer();
         simulation.draw.wireFrame();
+        // level.mirrorDoorsDraw();
         if (input.fire && m.fireCDcycle < m.cycle) {
             m.fireCDcycle = m.cycle + 15; //fire cooldown       
             for (let i = 0, len = mob.length; i < len; i++) {
@@ -144,6 +72,7 @@ const simulation = {
         simulation.drawCircle();
         simulation.runEphemera();
         simulation.constructCycle()
+        if (level.exit.isDrawPending) level.exit.drawAndCheck(true);
         ctx.restore();
         simulation.testingOutput();
         simulation.drawCursor();
@@ -155,6 +84,7 @@ const simulation = {
             simulation.cycle++;
             m.cycle++;
             simulation.gravity();
+            // level.mirrorDoors.update();
             Engine.update(engine, simulation.delta);
             if (m.onGround) {
                 m.groundControl()
@@ -172,6 +102,7 @@ const simulation = {
             b.bulletDo();
             simulation.runEphemera();
         }
+        simulation.draw.flushMapPathRebuild();
         simulation.isTimeSkipping = false;
     },
     timePlayerSkip(cycles = 60) {
@@ -180,6 +111,7 @@ const simulation = {
             simulation.cycle++;
             // m.walk_cycle += (m.flipLegs * m.Vx) * 0.5; //makes the legs look like they are moving fast this is just gonna run for each method call since it needs some tweaking
             simulation.gravity();
+            // level.mirrorDoors.update();
             Engine.update(engine, simulation.delta);
             // level.custom();
             // level.customTopLayer();
@@ -192,16 +124,26 @@ const simulation = {
         simulation.isTimeSkipping = false;
     },
     ephemera: [], //array that is used to store ephemera objects
-    removeEphemera: function (name) {
-        for (let i = 0, len = simulation.ephemera.length; i < len; i++) {
-            if (simulation.ephemera[i].name === name) {
-                simulation.ephemera.splice(i, 1);
-                break;
+    removeEphemera: function (who, isRemoveByName) {
+        if (isRemoveByName) { //who is a string
+            for (let i = 0, len = simulation.ephemera.length; i < len; i++) {
+                if (simulation.ephemera[i].name === who) {
+                    simulation.ephemera.splice(i, 1);
+                    break;
+                }
+            }
+        } else {
+            for (let i = 0, len = simulation.ephemera.length; i < len; i++) {
+                if (simulation.ephemera[i] === who) {
+                    simulation.ephemera.splice(i, 1);
+                    break;
+                }
             }
         }
     },
     runEphemera() {
-        for (let i = 0; i < simulation.ephemera.length; i++) {
+        // for (let i = 0; i < simulation.ephemera.length; i++) {
+        for (let i = simulation.ephemera.length - 1; i >= 0; i--) {
             simulation.ephemera[i].do();
         }
     },
@@ -226,7 +168,6 @@ const simulation = {
     //     if (!m.isTimeDilated) {
     //         // mobs.loop();
     //     }
-    //     mobs.healthBar();
     //     m.draw();
     //     m.hold();
     //     // v.draw(); //working on visibility work in progress
@@ -257,10 +198,11 @@ const simulation = {
     paused: false,
     isChoosing: false,
     testing: false, //testing mode: shows wire frame and some variables
-    cycle: 0, //total cycles, 60 per second
+    cycle: 600, //total cycles, 60 per second
     fpsCap: null, //limits frames per second to 144/2=72,  on most monitors the fps is capped at 60fps by the hardware
     fpsCapDefault: 72, //use to change fpsCap back to normal after a hit from a mob
     isCommunityMaps: false,
+    isStartingGame: false,
     cyclePaused: 0,
     fallHeight: 6000, //below this y position the player will teleport to start, take damage, or teleport to the sky based on the value of  level.fallMode
     lastTimeStamp: 0, //tracks time stamps for measuring delta
@@ -268,109 +210,15 @@ const simulation = {
     buttonCD: 0,
     isHorizontalFlipped: false, //makes some maps flipped horizontally
     levelsCleared: 0,
-    difficultyMode: 2, //normal difficulty is 2
+    difficultyOptions: {}, //individual difficulty effects; initialized from saved settings
+    difficultyMode: 2, //derived numeric scale for legacy enemy tuning and community maps
     difficulty: 0,
     constraint: 0,
-    dmgScale: null,
     healScale: 1,
     accelScale: null,
     CDScale: null,
     molecularMode: Math.floor(4 * Math.random()), //0 spores, 1 missile, 2 ice IX, 3 drones //randomize molecular assembler field type
-    // dropFPS(cap = 40, time = 15) {
-    //   simulation.fpsCap = cap
-    //   simulation.fpsInterval = 1000 / simulation.fpsCap;
-    //   simulation.defaultFPSCycle = simulation.cycle + time
-    //   const normalFPS = function () {
-    //     if (simulation.defaultFPSCycle < simulation.cycle) {
-    //       simulation.fpsCap = 72
-    //       simulation.fpsInterval = 1000 / simulation.fpsCap;
-    //     } else {
-    //       requestAnimationFrame(normalFPS);
-    //     }
-    //   };
-    //   requestAnimationFrame(normalFPS);
-    // },
-    // clip() {
 
-    // },
-    pixelGraphics() {
-        //copy current canvas pixel data
-        let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let data = imgData.data;
-        //change pixel data
-
-
-        // const off = 4 * Math.floor(x) + 4 * canvas.width * Math.floor(y);
-        // multiple windows
-        for (let i = data.length / 2; i < data.length; i += 4) {
-            index = i % (canvas.width * canvas.height * 2) // + canvas.width*4*canvas.height
-
-            data[i + 0] = data[index + 0]; // red
-            data[i + 1] = data[index + 1]; // red
-            data[i + 2] = data[index + 2]; // red
-            data[i + 3] = data[index + 3]; // red
-        }
-
-        for (let x = 0; x < len; x++) {
-
-        }
-
-
-
-        // const startX = 2 * canvas.width + 2 * canvas.width * canvas.height
-        // const endX = 4 * canvas.width + 4 * canvas.width * canvas.height
-        // const startY = 2 * canvas.width + 2 * canvas.width * canvas.height
-        // const endY = 4 * canvas.width + 4 * canvas.width * canvas.height
-        // for (let x = startX; x < endX; x++) {
-        //   for (let y = startY; y < endY; y++) {
-
-        //   }
-        // }
-
-
-
-
-        //strange draw offset
-        // const off = canvas.height * canvas.width * 4 / 2
-        // for (let index = 0; index < data.length; index += 4) {
-        //   data[index + 0] = data[index + 0 + off]; // red
-        //   data[index + 1] = data[index + 1 + off]; // red
-        //   data[index + 2] = data[index + 2 + off]; // red
-        //   data[index + 3] = data[index + 3 + off]; // red
-        // }
-
-        //change all pixels
-        // for (let index = 0; index < data.length; index += 4) {
-        // data[index + 0] = 255; // red
-        // data[index + 1] = 255; // green
-        // data[index + 2] = 255; // blue
-        // data[index + 3] = 255; // alpha 
-        // }
-
-        //change random pixels
-        // for (let i = 0, len = Math.floor(data.length / 10); i < len; ++i) {
-        //   const index = Math.floor((Math.random() * data.length) / 4) * 4;
-        //   data[index + 0] = 255; // red
-        //   data[index + 1] = 0; // green
-        //   data[index + 2] = 0; // blue
-        //   data[index + 3] = 255 //Math.floor(Math.random() * Math.random() * 255); // alpha
-        // }
-
-        // //change random pixels
-        // for (let i = 0, len = Math.floor(data.length / 1000); i < len; ++i) {
-        //   const index = Math.floor((Math.random() * data.length) / 4) * 4;
-        //   // data[index] = data[index] ^ 255; // Invert Red
-        //   // data[index + 1] = data[index + 1] ^ 255; // Invert Green
-        //   // data[index + 2] = data[index + 2] ^ 255; // Invert Blue
-        //   data[index + 0] = 0; // red
-        //   data[index + 1] = 0; // green
-        //   data[index + 2] = 0; // blue
-        //   // data[index + 3] = 255 //Math.floor(Math.random() * Math.random() * 255); // alpha
-        // }
-
-        //draw new pixel data to canvas
-        ctx.putImageData(imgData, 0, 0);
-    },
     drawCursor() {
         const size = 10;
         ctx.beginPath();
@@ -430,39 +278,41 @@ const simulation = {
         }
     },
     circleFlare(dup, loops = 100) {
-        boltNum = dup * 300
-        const bolts = []
-        colors = [powerUps.research.color, powerUps.ammo.color, powerUps.heal.color, powerUps.tech.color, powerUps.field.color, powerUps.gun.color]
-        for (let i = 0; i < boltNum; ++i) {
-            const mag = 6 + 20 * Math.random()
-            const angle = 2 * Math.PI * Math.random()
-            bolts.push({
-                x: m.pos.x,
-                y: m.pos.y,
-                Vx: mag * Math.cos(angle),
-                Vy: mag * Math.sin(angle),
-                color: colors[Math.floor(Math.random() * colors.length)]
-            })
-        }
-        let count = 0
-        loop = () => { //draw electricity
-            if (count++ < loops) requestAnimationFrame(loop)
-            for (let i = 0, len = bolts.length; i < len; ++i) {
-                bolts[i].x += bolts[i].Vx
-                bolts[i].y += bolts[i].Vy
-                if (Math.random() < 0.2) {
-                    simulation.drawList.push({
-                        x: bolts[i].x,
-                        y: bolts[i].y,
-                        radius: 1.5 + 5 * Math.random(),
-                        // color: "rgba(0,155,155,0.7)",
-                        color: bolts[i].color,
-                        time: Math.floor(9 + 25 * Math.random() * Math.random())
-                    });
+        if (!localSettings.isHideHUD) {
+            boltNum = dup * 300
+            const bolts = []
+            colors = [powerUps.research.color, powerUps.ammo.color, powerUps.heal.color, powerUps.tech.color, powerUps.field.color, powerUps.gun.color]
+            for (let i = 0; i < boltNum; ++i) {
+                const mag = 6 + 20 * Math.random()
+                const angle = 2 * Math.PI * Math.random()
+                bolts.push({
+                    x: m.pos.x,
+                    y: m.pos.y,
+                    Vx: mag * Math.cos(angle),
+                    Vy: mag * Math.sin(angle),
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                })
+            }
+            let count = 0
+            loop = () => { //draw electricity
+                if (count++ < loops) requestAnimationFrame(loop)
+                for (let i = 0, len = bolts.length; i < len; ++i) {
+                    bolts[i].x += bolts[i].Vx
+                    bolts[i].y += bolts[i].Vy
+                    if (Math.random() < 0.2) {
+                        simulation.drawList.push({
+                            x: bolts[i].x,
+                            y: bolts[i].y,
+                            radius: 1.5 + 5 * Math.random(),
+                            // color: "rgba(0,155,155,0.7)",
+                            color: bolts[i].color,
+                            time: Math.floor(9 + 25 * Math.random() * Math.random())
+                        });
+                    }
                 }
             }
+            requestAnimationFrame(loop)
         }
-        requestAnimationFrame(loop)
     },
     boldActiveGunHUD() {
         if (b.inventory.length > 0) {
@@ -496,32 +346,6 @@ const simulation = {
         }
         simulation.boldActiveGunHUD();
     },
-    // updateTechHUD() {
-    //     let text = ""
-    //     for (let i = 0, len = tech.tech.length; i < len; i++) { //add tech
-    //         if (tech.tech[i].isLost) {
-    //             if (text) text += "<br>" //add a new line, but not on the first line
-    //             text += `<span style="text-decoration: line-through;">${tech.tech[i].name}</span>`
-    //         } else if (tech.tech[i].count > 0 && !tech.tech[i].isInstant) {
-    //             if (text) text += "<br>" //add a new line, but not on the first line
-    //             text += `<span id = "${tech.tech[i].name}">${tech.tech[i].name}${tech.tech[i].count > 1 ? ` (${tech.tech[i].count}x)` : ""}</span>`
-
-    //             // document.getElementById(tech.tech[i].name).style.fontWeight = 'bold';
-    //             // simulation.ephemera.push({
-    //             //     name: "bold",
-    //             //     count: 180,
-    //             //     do() {
-    //             //         this.count--
-    //             //         if (this.count < 0) {
-    //             //             simulation.removeEphemera(this.name)
-    //             //             if (document.getElementById(tech.tech[i].name)) document.getElementById(tech.tech[i].name).style.fontWeight = 'normal';
-    //             //         }
-    //             //     }
-    //             // })
-    //         }
-    //     }
-    //     document.getElementById("right-HUD").innerHTML = text
-    // },
     updateTechHUD() {
         let text = ""
         for (let i = 0, len = tech.tech.length; i < len; i++) { //add tech
@@ -536,17 +360,46 @@ const simulation = {
         }
         document.getElementById("right-HUD").innerHTML = text
     },
+    dmgNumbers(where, dmg, color = "rgba(255, 0, 17,", size = 45, isOutline = false) {
+        if (localSettings.showDmgNumbers && dmg > 0) {
+            simulation.ephemera.push({
+                count: 0,
+                drift: { x: (0.6 * Math.random()) * (Math.random() < 0.5 ? -1 : 1), y: 1 + 0.5 * Math.random() },
+                font: `${size}px Arial`,
+                do() {
+                    this.count++
+                    if (this.count > size) {
+                        simulation.removeEphemera(this)
+                    } else {
+                        const opacity = Math.max(0, (2 * (60 - this.count)) / 60)
+                        ctx.fillStyle = `${color}${opacity})`;
+                        ctx.font = this.font;
+                        pos = Vector.add(where, Vector.mult(this.drift, -this.count))
+                        if (isOutline) {
+                            ctx.strokeStyle = `rgba(0,0,0,${opacity})`//"#000"
+                            ctx.lineWidth = 2;
+                            ctx.strokeText(dmg, pos.x, pos.y);
+                        }
+                        ctx.fillText(dmg, pos.x, pos.y);
+                    }
+                },
+            })
+        }
+    },
     lastLogTime: 0,
     isTextLogOpen: true,
+    consoleLength: 0,
     inGameConsole(text, time = 240) {
         if (!localSettings.isHideHUD && simulation.isTextLogOpen && !build.isExperimentSelection) {
-            if (simulation.lastLogTime > m.cycle) { //if there is an older message
+            if (simulation.lastLogTime > m.cycle && simulation.consoleLength < 30) { //if there is an older message
                 document.getElementById("text-log").innerHTML = document.getElementById("text-log").innerHTML + '<br>' + text;
                 simulation.lastLogTime = m.cycle + time;
+                simulation.consoleLength++
             } else {
                 document.getElementById("text-log").innerHTML = text;
                 document.getElementById("text-log").style.display = "inline";
                 simulation.lastLogTime = m.cycle + time;
+                simulation.consoleLength = 0
             }
         }
     },
@@ -590,6 +443,7 @@ const simulation = {
         } else {
             simulation.drawCursor = simulation.drawCursorBasic
         }
+        // b.setFireMethod()
     },
     zoom: null,
     zoomScale: 1000,
@@ -632,15 +486,15 @@ const simulation = {
         if (simulation.isAutoZoom) {
             simulation.ephemera.push({
                 name: "zoom",
-                count: simulation.testing ? 0 : 120, //cycles before it self removes
+                count: simulation.testing ? 1 : 120, //cycles before it self removes
                 currentLevel: level.onLevel,
                 do() {
                     this.count--
                     const step = (newZoomScale - simulation.zoomScale) / this.count
                     simulation.zoomScale += step
-                    if (this.count < 1 && this.currentLevel === level.onLevel && simulation.isAutoZoom) {
+                    if (this.count < 1 && simulation.isAutoZoom) {
                         simulation.zoomScale = newZoomScale
-                        simulation.removeEphemera(this.name)
+                        simulation.removeEphemera(this)
                     }
                     simulation.setZoom(simulation.zoomScale);
                 },
@@ -663,23 +517,18 @@ const simulation = {
                                 // Flip the canvas vertically
                                 ctx.translate(0, canvas.height); // Move the origin down to the bottom
                                 ctx.scale(1, -1); // Flip vertically
-                                simulation.isInvertedVertical = true
                                 //flip mouse Y again to make sure it caught
-                                mouseMove = function (e) {
-                                    simulation.mouse.x = e.clientX;
-                                    simulation.mouse.y = window.innerHeight - e.clientY;
-                                }
+                                // mouseMove.reset()
                             } else {
                                 requestAnimationFrame(loop);
                                 ctx.translate(0, canvas.height * count / frames);
                                 ctx.scale(1, 1 - 2 * count / frames);
                             }
-                            if (count === Math.floor(frames / 2)) {
+                            if (count > Math.floor(frames / 2) && !simulation.isInvertedVertical) {
                                 //flip mouse Y at the 1/2 way point
-                                mouseMove = function (e) {
-                                    simulation.mouse.x = e.clientX;
-                                    simulation.mouse.y = window.innerHeight - e.clientY;
-                                }
+                                simulation.isInvertedVertical = true
+                                mouseMove.reset()
+                                simulation.mouse.y = canvas.height - simulation.mouse.y
                                 //passFunction probably flips the map elements 
                                 passFunction()
                             }
@@ -693,10 +542,9 @@ const simulation = {
                 ctx.scale(1, -1); // Flip vertically
                 //flip mouse Y
                 simulation.isInvertedVertical = true
-                mouseMove = function (e) {
-                    simulation.mouse.x = e.clientX;
-                    simulation.mouse.y = window.innerHeight - e.clientY;
-                }
+                mouseMove.reset()
+                simulation.mouse.y = canvas.height - simulation.mouse.y
+
             }
         }
     },
@@ -714,17 +562,21 @@ const simulation = {
                             // requestAnimationFrame(() => { ctx.reset(); });
                             // ctx.translate(0, 0);
                             // ctx.scale(1, 1);
-                            simulation.isInvertedVertical = false
+
                             //flip mouse Y again to make sure it caught
-                            mouseMove = mouseMoveDefault
+                            // mouseMove.reset()
 
                         } else {
                             requestAnimationFrame(loop);
                             ctx.translate(0, canvas.height - canvas.height * count / frames);
                             ctx.scale(1, -1 + 2 * count / frames);
                         }
-                        if (count === Math.floor(frames / 2)) {
-                            mouseMove = mouseMoveDefault//flip mouse Y at the 1/2 way point
+                        if (count > Math.floor(frames / 2) && simulation.isInvertedVertical) {
+                            simulation.isInvertedVertical = false
+                            //flip mouse Y at the 1/2 way point
+                            mouseMove.reset()
+                            simulation.mouse.y = canvas.height - simulation.mouse.y
+
                             passFunction()//passFunction probably draws new map elements 
                         }
                     }
@@ -735,7 +587,9 @@ const simulation = {
             ctx.reset();
             ctx.font = "25px Arial";
             simulation.isInvertedVertical = false
-            mouseMove = mouseMoveDefault
+            mouseMove.reset()
+            simulation.mouse.y = canvas.height - simulation.mouse.y
+
         }
     },
     translatePlayerAndCamera(where, isTranslateBots = true) {
@@ -764,6 +618,17 @@ const simulation = {
                         Matter.Body.setPosition(bullet[i], Vector.sub(bullet[i].position, change));
                     }
                 }
+            }
+
+            if (tech.wire && tech.wire.segments.length) {
+                requestAnimationFrame(() => {
+                    const r = 32 * player.scale
+                    const a = m.angle + Math.PI
+                    for (let i = 0; i < tech.wire.segments.length; i++) {
+                        tech.wire.segments[i].y = tech.wire.segments[i].oldY = m.pos.y + (r * Math.sin(a))
+                        tech.wire.segments[i].x = tech.wire.segments[i].oldX = m.pos.x + (r * Math.cos(a))
+                    }
+                })
             }
         }
     },
@@ -820,6 +685,26 @@ const simulation = {
     restoreCamera() {
         ctx.restore();
     },
+    energyGenGraphic(totalCycles = 10 + Math.floor(Math.random() * 20)) {
+        //energy generation animation
+        if (!localSettings.isHideHUD) {
+            simulation.ephemera.push({
+                where: { x: m.pos.x + 45 * (Math.random() - 0.5), y: m.pos.y + Math.random() * 100 },
+                count: totalCycles,
+                r: 1.5 + 3 * Math.random(),
+                do() {
+                    this.count--
+                    if (this.count < 0) simulation.removeEphemera(this)
+                    this.where.y -= 3
+
+                    ctx.beginPath();
+                    ctx.arc(this.where.x, this.where.y, this.r, 0, 2 * Math.PI);
+                    ctx.fillStyle = m.fieldMeterColor
+                    ctx.fill();
+                },
+            })
+        }
+    },
     trails(swapPeriod = 150) {
         // const swapPeriod = 150
         const len = 30
@@ -838,38 +723,6 @@ const simulation = {
             }
         }, len * swapPeriod);
     },
-    // warp(translation = 5, skew = 0.05, scale = 0.05) {
-    // if (simulation.cycle % 2) { //have to alternate frames or else successive rumbles over write the effects of the previous rumble
-    // requestAnimationFrame(() => { ctx.setTransform(1, 0, 0, 1, 0, 0); }) //reset
-    // requestAnimationFrame(() => {
-    //     if (!simulation.paused && m.alive) {
-    //         ctx.transform(1 - scale * (Math.random() - 0.5), skew * (Math.random() - 0.5), skew * (Math.random() - 0.5), 1 - scale * (Math.random() - 0.5), translation * (Math.random() - 0.5), translation * (Math.random() - 0.5)); //ctx.transform(Horizontal scaling. A value of 1 results in no scaling,  Vertical skewing,   Horizontal skewing,   Vertical scaling. A value of 1 results in no scaling,   Horizontal translation (moving),   Vertical translation (moving)) //https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setTransform
-    //     }
-    // })
-
-    //reset
-    // ctx.transform(1, 0, 0, 1, 0, 0); //ctx.transform(Horizontal scaling. A value of 1 results in no scaling,  Vertical skewing,   Horizontal skewing,   Vertical scaling. A value of 1 results in no scaling,   Horizontal translation (moving),   Vertical translation (moving)) //https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setTransform
-
-    // }
-    // const loop = () => {
-    //     if (!simulation.paused && m.alive) {
-    //         ctx.save();
-    //         ctx.transform(1 - scale * (Math.random() - 0.5), skew * (Math.random() - 0.5), skew * (Math.random() - 0.5), 1 - scale * (Math.random() - 0.5), translation * (Math.random() - 0.5), translation * (Math.random() - 0.5)); //ctx.transform(Horizontal scaling. A value of 1 results in no scaling,  Vertical skewing,   Horizontal skewing,   Vertical scaling. A value of 1 results in no scaling,   Horizontal translation (moving),   Vertical translation (moving))
-    //         requestAnimationFrame(() => { ctx.restore(); })
-    //     }
-    // }
-    // requestAnimationFrame(loop);
-
-    // function loop() {
-    //     if (!simulation.paused && m.alive) {
-    //         ctx.save();
-    //         ctx.transform(1 - scale * (Math.random() - 0.5), skew * (Math.random() - 0.5), skew * (Math.random() - 0.5), 1 - scale * (Math.random() - 0.5), translation * (Math.random() - 0.5), translation * (Math.random() - 0.5)); //ctx.transform(Horizontal scaling. A value of 1 results in no scaling,  Vertical skewing,   Horizontal skewing,   Vertical scaling. A value of 1 results in no scaling,   Horizontal translation (moving),   Vertical translation (moving))
-    //         requestAnimationFrame(() => { ctx.restore(); })
-    //     }
-    //     requestAnimationFrame(loop);
-    // }
-    // requestAnimationFrame(loop);
-    // },
     wipe() { }, //set in simulation.startGame
     gravity() {
         function addGravity(bodies, magnitude) {
@@ -885,13 +738,21 @@ const simulation = {
     },
     firstRun: true,
     splashReturn() {
+        if (document.fullscreenElement) {
+            // mouseMove.isLockPointer = true
+            document.body.addEventListener('mousedown', mouseMove.pointerUnlock, { once: true })//watches for mouse clicks that exit draft mode and self removes
+
+            document.exitPointerLock();
+            mouseMove.isPointerLocked = false
+            mouseMove.reset()
+        }
         document.getElementById("previous-seed").innerHTML = `previous seed: <span style="font-size:80%;">${Math.initialSeed}</span><br>`
         document.getElementById("seed").value = Math.initialSeed = Math.seed //randomize initial seed
 
         //String(document.getElementById("seed").value)
         // Math.seed = Math.abs(Math.hash(Math.initialSeed)) //update randomizer seed in case the player changed it
 
-
+        canvas.style.filter = "brightness(1)"
         simulation.clearTimeouts();
         simulation.onTitlePage = true;
         document.getElementById("splash").onclick = function () {
@@ -915,7 +776,6 @@ const simulation = {
         document.getElementById("dmg").style.display = "none";
         document.getElementById("health-bg").style.display = "none";
         document.getElementById("defense-bar").style.display = "none"
-        document.getElementById("damage-bar").style.display = "none"
         document.body.style.cursor = "auto";
         setTimeout(() => {
             document.getElementById("experiment-button").style.opacity = "1";
@@ -927,7 +787,36 @@ const simulation = {
     },
     fpsInterval: 0, //set in startGame
     then: null,
-    startGame(isBuildRun = false, isTrainingRun = false) {
+    async startGame(isBuildRun = false, isTrainingRun = false) {
+        if (simulation.isStartingGame) return
+        simulation.isStartingGame = true
+        if (simulation.isCommunityMaps || isTrainingRun) {
+            try {
+                await level.loadMoreLevels()
+            } catch (error) {
+                simulation.isStartingGame = false
+                console.error(error)
+                return
+            }
+        }
+        simulation.isStartingGame = false
+        if (localSettings.isHideHUD) {
+            simulation.draw.body = function () {
+                ctx.beginPath();
+                for (let i = 0, len = body.length; i < len; ++i) {
+                    let vertices = body[i].vertices;
+                    ctx.moveTo(vertices[0].x, vertices[0].y);
+                    for (let j = 1; j < vertices.length; j++) {
+                        ctx.lineTo(vertices[j].x, vertices[j].y);
+                    }
+                    ctx.lineTo(vertices[0].x, vertices[0].y);
+                }
+                ctx.fillStyle = color.block;
+                ctx.fill();
+            }
+        } else {
+            simulation.draw.body = simulation.draw.bodyDefault
+        }
         simulation.isTextLogOpen = true
         simulation.clearMap()
         if (!isBuildRun) { //if a build run logic flow returns to "experiment-button").addEventListener
@@ -939,6 +828,8 @@ const simulation = {
         } else {
             simulation.isTraining = false
         }
+        simulation.difficultyOptions = powerUps.difficulty.normalize(simulation.isTraining ? {} : localSettings.difficultyOptions)
+        powerUps.difficulty.updateScale()
         simulation.onTitlePage = false;
         // document.getElementById("choose-grid").style.display = "none"
         document.getElementById("choose-grid").style.visibility = "hidden"
@@ -957,11 +848,9 @@ const simulation = {
         if (!localSettings.isHideHUD) {
             document.getElementById("right-HUD").style.display = "inline"
             document.getElementById("defense-bar").style.display = "inline"
-            document.getElementById("damage-bar").style.display = "inline"
         } else {
             document.getElementById("right-HUD").style.display = "none"
             document.getElementById("defense-bar").style.display = "none"
-            document.getElementById("damage-bar").style.display = "none"
         }
         document.getElementById("guns").style.display = "inline"
         document.getElementById("field").style.display = "inline"
@@ -974,7 +863,7 @@ const simulation = {
         ctx.globalCompositeOperation = "source-over"
         ctx.shadowBlur = 0;
 
-        mouseMove = mouseMoveDefault
+        mouseMove.reset()
         requestAnimationFrame(() => {
             ctx.setTransform(1, 0, 0, 1, 0, 0); //reset warp effect
             ctx.setLineDash([]) //reset stroke dash effect
@@ -1033,6 +922,7 @@ const simulation = {
         simulation.lastLogTime = 0;
         mobs.mobDeaths = 0
         level.isFlipped = false
+        level.isFlipping = false;
         level.onLevel = 0;
         level.levelsCleared = 0;
         level.updateDifficulty()
@@ -1048,19 +938,22 @@ const simulation = {
         m.alive = true;
         m.definePlayerMass();
         m.onGround = false
+        // m.groundCount = 0
         m.lastOnGroundCycle = 0
-        m.health = 0;
+        // m.addHealth(0.25)
+        m.health = 0.25;
+
         level.isLowHeal = false
-        m.addHealth(0.25)
         m.drop();
         m.holdingTarget = null
 
         //set to default field
         tech.healMaxEnergyBonus = 0
-        m.energy = 0
         m.immuneCycle = 0;
         m.coupling = 0
+        m.fieldUpgrades[1].energyHealthRatio = 1
         m.setField(0) //this calls m.couplingChange(), which sets max health and max energy
+        m.energy = 1
         //exit testing
         if (simulation.testing) {
             simulation.testing = false;
@@ -1072,21 +965,20 @@ const simulation = {
         build.hasExperimentalMode = false
         build.isExperimentSelection = false;
         build.isExperimentRun = false;
-
+        canvas.style.filter = "brightness(1)"
 
         //setup checks
         if (!localSettings.isHideHUD) {
             simulation.ephemera.push({
                 name: "dmgDefBars", count: 0, do() {
                     if (!(m.cycle % 15)) { //4 times a second
-                        const defense = m.defense() //* simulation.dmgScale           //update defense bar
+                        const defense = m.defense() //update defense bar
                         if (m.lastCalculatedDefense !== defense) {
                             document.getElementById("defense-bar").style.width = Math.floor(300 * m.maxHealth * (1 - defense)) + "px";
                             m.lastCalculatedDefense = defense
                         }
-                        const damage = tech.damageFromTech() //* m.dmgScale           //update damage bar
+                        const damage = tech.damageAdjustments() //update damage bar
                         if (m.lastCalculatedDamage !== damage) {
-                            document.getElementById("damage-bar").style.height = Math.floor((Math.atan(0.25 * damage - 0.25) + 0.25) * 0.53 * canvas.height) + "px";
                             m.lastCalculatedDamage = damage
                         }
                     }
@@ -1094,7 +986,16 @@ const simulation = {
             })
         }
         simulation.ephemera.push({
-            name: "uniqueName", count: 0, do() {
+            name: "checks", count: 0, do() {
+                if (localSettings.showDmgNumbers && !(m.cycle % 30)) {
+                    for (let i = 0; i < mob.length; i++) {
+                        if (mob[i].dmgLog) {
+                            simulation.dmgNumbers({ x: mob[i].position.x, y: mob[i].position.y - mob[i].radius * 1.4 }, Math.ceil(mob[i].dmgLog).toFixed(0), "rgba(255, 30, 67,", 40)
+                            mob[i].dmgLog = 0
+                        }
+                    }
+                }
+
                 if (!(m.cycle % 60)) { //once a second
                     //energy overfill 
                     if (m.energy > m.maxEnergy) {
@@ -1106,11 +1007,10 @@ const simulation = {
                             //infinite falling.  teleport to sky after falling
 
                             simulation.ephemera.push({
-                                name: "slow player",
                                 count: 160, //cycles before it self removes
                                 do() {
                                     this.count--
-                                    if (this.count < 0 || m.onGround) simulation.removeEphemera(this.name)
+                                    if (this.count < 0 || m.onGround) simulation.removeEphemera(this)
                                     if (player.velocity.y > 70) Matter.Body.setVelocity(player, { x: player.velocity.x * 0.99, y: player.velocity.y * 0.99 });
                                     if (player.velocity.y > 90) Matter.Body.setVelocity(player, { x: player.velocity.x * 0.99, y: player.velocity.y * 0.99 });
                                 },
@@ -1133,18 +1033,17 @@ const simulation = {
                             }
                         } else if (level.fallMode === "position") { //fall and stay in the same horizontal position
                             simulation.ephemera.push({
-                                name: "slow player",
                                 count: 180, //cycles before it self removes
                                 do() {
                                     this.count--
-                                    if (this.count < 0 || m.onGround) simulation.removeEphemera(this.name)
+                                    if (this.count < 0 || m.onGround) simulation.removeEphemera(this)
                                     if (player.velocity.y > 70) Matter.Body.setVelocity(player, { x: player.velocity.x * 0.99, y: player.velocity.y * 0.99 });
                                     if (player.velocity.y > 90) Matter.Body.setVelocity(player, { x: player.velocity.x * 0.99, y: player.velocity.y * 0.99 });
                                 },
                             })
                             const before = { x: player.position.x, y: player.position.y, }
                             const posXClamped = Math.min(Math.max(level.fallModeBounds.left, player.position.x), level.fallModeBounds.right)
-                            Matter.Body.setPosition(player, { x: posXClamped, y: level.enter.y - 4000 });
+                            Matter.Body.setPosition(player, { x: posXClamped, y: level.enter.y - 6000 });
 
                             // translate camera smoothly to preserve illusion to endless fall
                             const change = { x: before.x - posXClamped, y: before.y - player.position.y }
@@ -1158,7 +1057,7 @@ const simulation = {
                             for (let i = 0; i < bullet.length; i++) {
                                 if (bullet[i].botType) Matter.Body.setPosition(bullet[i], Vector.sub(bullet[i].position, change));
                             }
-                        } else { //get hurt and go to start
+                        } else { //go to start
                             Matter.Body.setVelocity(player, { x: 0, y: 0 });
                             Matter.Body.setPosition(player, { x: level.enter.x + 50, y: level.enter.y - 20 });
                             // move bots
@@ -1169,35 +1068,18 @@ const simulation = {
                                 }
                             }
                         }
-
-
-
-
-
                     }
                     if (isNaN(player.position.x)) m.death();
                     if (m.lastKillCycle + 300 > m.cycle) { //effects active for 5 seconds after killing a mob
                         if (tech.isEnergyRecovery && m.immuneCycle < m.cycle) {
                             m.energy += m.maxEnergy * 0.05 * level.isReducedRegen
-                            simulation.drawList.push({ //add dmg to draw queue
-                                x: m.pos.x,
-                                y: m.pos.y - 45,
-                                radius: Math.sqrt(m.maxEnergy * 0.05) * 60,
-                                color: "rgba(0, 204, 255,0.4)", //#0cf
-                                time: 4
-                            });
+                            for (let i = 0; i < 2; i++)simulation.energyGenGraphic()
                         }
                         if (tech.isHealthRecovery) {
                             if (tech.isEnergyHealth) {
                                 if (m.immuneCycle < m.cycle) {
                                     m.energy += m.maxEnergy * 0.005 * level.isReducedRegen
-                                    simulation.drawList.push({ //add dmg to draw queue
-                                        x: m.pos.x,
-                                        y: m.pos.y,
-                                        radius: Math.sqrt(m.maxEnergy * 0.02) * 60,
-                                        color: "rgba(0, 204, 255,0.4)", //#0cf
-                                        time: 4
-                                    });
+                                    simulation.energyGenGraphic()
                                 }
                             } else {
                                 const heal = 0.005 * m.maxHealth
@@ -1215,44 +1097,61 @@ const simulation = {
 
                     if (!(m.cycle % 420)) { //once every 7 seconds
                         //check if player is inside the map
-                        if (Matter.Query.point(map, m.pos).length > 0 || Matter.Query.point(map, player.position).length > 0) {
+
+                        if (Matter.Query.rayAny(map, m.pos, player.position)) {
+                            // if (Matter.Query.point(map, m.pos).length > 0 || Matter.Query.point(map, player.position).length > 0) {
                             //check for the next few seconds to see if being stuck continues
                             simulation.ephemera.push({
-                                name: "stuck",
                                 count: 240, //cycles before it self removes
                                 do() {
-                                    if (Matter.Query.point(map, m.pos).length > 0 || Matter.Query.point(map, player.position).length > 0) {
+                                    if (Matter.Query.rayAny(map, m.pos, player.position)) {
                                         this.count--
 
                                         if (this.count < 0) {
-                                            simulation.removeEphemera(this.name)
+                                            simulation.removeEphemera(this)
                                             Matter.Body.setVelocity(player, { x: 0, y: 0 });
                                             Matter.Body.setPosition(player, { x: level.enter.x + 50, y: level.enter.y - 20 });
                                         }
                                     } else {
-                                        simulation.removeEphemera(this.name)
+                                        simulation.removeEphemera(this)
                                     }
                                 },
                             })
                         }
                         if (tech.isZeno) {
-                            if (tech.isEnergyHealth) {
-                                m.energy *= 0.95
-                            } else {
-                                m.health *= 0.95 //remove 5%
-                                m.displayHealth();
-                            }
-
+                            m.takeDamage(0.05 * (tech.isEnergyHealth ? m.energy : m.health), false)
+                            // if (tech.isEnergyHealth) {
+                            //     m.energy *= 0.95
+                            // } else {
+                            //     m.health *= 0.95 //remove 5%
+                            //     m.displayHealth();
+                            // }
+                            simulation.drawList.push({ //add dmg to draw queue
+                                x: m.pos.x,
+                                y: m.pos.y,
+                                radius: 10,
+                                color: "rgb(255, 0, 195)",
+                                time: 4
+                            });
                         }
                         if (tech.cyclicImmunity && m.immuneCycle < m.cycle + tech.cyclicImmunity) m.immuneCycle = m.cycle + tech.cyclicImmunity; //player is immune to damage for 60 cycles
-
 
 
                         let i = body.length;
                         while (i--) {
                             if (body[i].position.y > simulation.fallHeight) {
-                                Matter.Composite.remove(engine.world, body[i]);
-                                body.splice(i, 1);
+                                if (body[i].isInvulnerable || body[i].isImmutable) {
+                                    Matter.Body.setVelocity(body[i], { x: 0, y: 0 });
+                                    if (level.fallMode === "position") {
+                                        const posXClamped = Math.min(Math.max(level.fallModeBounds.left, body[i].position.x), level.fallModeBounds.right)
+                                        Matter.Body.setPosition(body[i], { x: posXClamped, y: level.enter.y - 4000 });
+                                    } else {
+                                        Matter.Body.setPosition(body[i], { x: level.enter.x + 50, y: level.enter.y - 20 });
+                                    }
+                                } else {
+                                    Matter.Composite.remove(engine.world, body[i]);
+                                    body.splice(i, 1);
+                                }
                             }
                         }
                         i = powerUp.length
@@ -1292,6 +1191,7 @@ const simulation = {
         simulation.fpsInterval = 1000 / simulation.fpsCap;
         simulation.then = Date.now();
         requestAnimationFrame(cycle); //starts game loop
+        // if (document.fullscreenElement) mouseMove.isLockPointer = true //this interacts with the mousedown event listener to exit pointer lock
     },
     clearTimeouts() {
         let id = window.setTimeout(function () { }, 0);
@@ -1301,6 +1201,10 @@ const simulation = {
     },
     clearNow: false,
     clearMap() {
+        // level.mirrorDoors.reset();
+        level.exit.reflection = null;
+        level.exit.isInverted = false;
+        level.exit.bottomOffset = 20;
         level.isVerticalFLipLevel = false
         level.isProcedural = false;
         level.fallMode = "";
@@ -1326,9 +1230,16 @@ const simulation = {
             if (tech.isMutualism && !tech.isEnergyHealth) {
                 for (let i = 0; i < bullet.length; i++) {
                     if (bullet[i].isMutualismActive) {
-                        m.health += 0.01 + 0.01 * ((bullet[i].isSpore || bullet[i].isFlea) ? 0 : 1)
-                        if (m.health > m.maxHealth) m.health = m.maxHealth;
-                        m.displayHealth();
+                        if (tech.isMutualism && this.isMutualismActive) {
+                            if (tech.isEnergyHealth) {
+                                m.energy += 0.01 + 0.01 * ((bullet[i].isSpore || bullet[i].isFlea) ? 0 : 1)
+                                simulation.energyGenGraphic()
+                            } else {
+                                m.health += 0.01 + 0.01 * ((bullet[i].isSpore || bullet[i].isFlea) ? 0 : 1)
+                                if (m.health > m.maxHealth) m.health = m.maxHealth;
+                                m.displayHealth();
+                            }
+                        }
                     }
                 }
             }
@@ -1372,7 +1283,7 @@ const simulation = {
         if (tech.isHealAttract && m.alive) { //send health power ups to the next level
             let healCount = 0
             for (let i = 0, len = powerUp.length; i < len; i++) {
-                if (powerUp[i].name === "heal" && Vector.magnitudeSquared(Vector.sub(powerUp[i].position, m.pos)) < 1000000) healCount++
+                if (powerUp[i].name === "heal") healCount++
             }
             //respawn health in animation frame
             let respawnHeal = () => {
@@ -1388,15 +1299,19 @@ const simulation = {
         }
         if (tech.isDronesTravel && m.alive) {
             //count drones
-            let droneCount = 0
+            // let droneCount = 0
+            let droneArray = []
             let sporeCount = 0
             let wormCount = 0
             let fleaCount = 0
-            let deliveryCount = 0
+            // let zombieCount = 0
             for (let i = 0; i < bullet.length; ++i) {
-                if (bullet[i].isDrone) {
-                    droneCount++
-                    if (bullet[i].isImproved) deliveryCount++
+                if (bullet[i].isDrone && bullet[i].endCycle !== Infinity) {
+                    droneArray.push({
+                        isImproved: bullet[i].isImproved,
+                        scale: bullet[i].scale,
+                        endCycle: bullet[i].endCycle,
+                    })
                 } else if (bullet[i].isSpore) {
                     sporeCount++
                 } else if (bullet[i].wormSize) {
@@ -1404,10 +1319,38 @@ const simulation = {
                 } else if (bullet[i].isFlea) {
                     fleaCount++
                 }
+                // else if (bullet[i].isZombie) {
+                //     zombieCount++
+                // }
             }
 
+            // const where = m.pos
             //respawn drones in animation frame
-            requestAnimationFrame(() => { b.delayDrones({ x: level.enter.x + 50, y: level.enter.y - 60 }, droneCount, deliveryCount) });
+            requestAnimationFrame(() => {
+                let respawnDrones = () => {
+                    if (droneArray.length) {
+                        requestAnimationFrame(respawnDrones);
+                        if (!simulation.paused && !simulation.isChoosing && m.alive) {
+                            const where = { x: level.enter.x + 50, y: level.enter.y - 60 }
+                            if (tech.isDroneRadioactive) {
+                                b.droneRadioactive({ x: where.x + 50 * (Math.random() - 0.5), y: where.y + 50 * (Math.random() - 0.5) }, 0)
+                                if (droneArray[0].scale) bullet[bullet.length - 1].size = droneArray[0].scale
+                            } else {
+                                b.drone({ x: where.x + 50 * (Math.random() - 0.5), y: where.y + 50 * (Math.random() - 0.5) }, 0)
+                                const who = bullet[bullet.length - 1]
+                                if (droneArray[0].isImproved) who.isImproved = true;
+                                if (droneArray[0].scale) {
+                                    who.scale = droneArray[0].scale
+                                    Matter.Body.scale(who, who.scale, who.scale);
+                                }
+                                who.endCycle = droneArray[0].endCycle + 300
+                            }
+                            droneArray.shift() //remove first element
+                        }
+                    }
+                }
+                requestAnimationFrame(respawnDrones);
+            });
 
             //respawn spores in animation frame
             let respawnSpores = () => {
@@ -1415,14 +1358,8 @@ const simulation = {
                     requestAnimationFrame(respawnSpores);
                     if (!simulation.paused && !simulation.isChoosing) {
                         sporeCount--
-                        const where = {
-                            x: level.enter.x + 50,
-                            y: level.enter.y - 60
-                        }
-                        b.spore({
-                            x: where.x + 100 * (Math.random() - 0.5),
-                            y: where.y + 120 * (Math.random() - 0.5)
-                        })
+                        const where = { x: level.enter.x + 50, y: level.enter.y - 60 }
+                        b.spore({ x: where.x + 100 * (Math.random() - 0.5), y: where.y + 120 * (Math.random() - 0.5) })
                     }
                 }
             }
@@ -1434,14 +1371,8 @@ const simulation = {
                     requestAnimationFrame(respawnWorms);
                     if (!simulation.paused && !simulation.isChoosing) {
                         wormCount--
-                        const where = {
-                            x: level.enter.x + 50,
-                            y: level.enter.y - 60
-                        }
-                        b.worm({
-                            x: where.x + 100 * (Math.random() - 0.5),
-                            y: where.y + 120 * (Math.random() - 0.5)
-                        })
+                        const where = { x: level.enter.x + 50, y: level.enter.y - 60 }
+                        b.worm({ x: where.x + 100 * (Math.random() - 0.5), y: where.y + 120 * (Math.random() - 0.5) })
                     }
                 }
             }
@@ -1453,30 +1384,34 @@ const simulation = {
                     requestAnimationFrame(respawnFleas);
                     if (!simulation.paused && !simulation.isChoosing) {
                         fleaCount--
-                        const where = {
-                            x: level.enter.x + 50,
-                            y: level.enter.y - 60
-                        }
                         const speed = 6 + 3 * Math.random()
                         const angle = 2 * Math.PI * Math.random()
-                        b.flea({
-                            x: where.x + 100 * (Math.random() - 0.5),
-                            y: where.y + 120 * (Math.random() - 0.5)
-                        }, {
-                            x: speed * Math.cos(angle),
-                            y: speed * Math.sin(angle)
-                        })
+                        const where = { x: level.enter.x + 50, y: level.enter.y - 60 }
+                        b.flea({ x: where.x + 100 * (Math.random() - 0.5), y: where.y + 120 * (Math.random() - 0.5) }, { x: speed * Math.cos(angle), y: speed * Math.sin(angle) })
                     }
                 }
             }
             requestAnimationFrame(respawnFleas);
+
+
+            //respawn spores in animation frame
+            // let respawnZombies = () => {
+            //     if (zombieCount > 0) {
+            //         requestAnimationFrame(respawnZombies);
+            //         if (!simulation.paused && !simulation.isChoosing) {
+            //             zombieCount--
+            //             spawn.zombie(where.x + 100 * (Math.random() - 0.5), where.y + 120 * (Math.random() - 0.5))
+            //         }
+            //     }
+            // }
+            // requestAnimationFrame(respawnZombies);
         }
         if (tech.isQuantumEraser && m.alive) {
             let count = 0
             for (let i = 0, len = mob.length; i < len; i++) {
                 if (mob[i].isDropPowerUp && mob[i].alive) count++
             }
-            count *= 0.3 //to fake the 25% chance, this makes it not random, and more predictable
+            count *= 0.44 //to fake the chance, this makes it not random, and more predictable
             let cycle = () => { //run after waiting a cycle for the map to be cleared
                 const types = ["heal", "ammo", "heal", "ammo", "research", "coupling", "boost", "tech", "gun", "field"]
                 for (let i = 0; i < count; i++) powerUps.spawnDelay(types[Math.floor(Math.random() * types.length)], 1)
@@ -1492,6 +1427,7 @@ const simulation = {
         map = [];
         removeAll(body);
         body = [];
+        lastTouchedBlock = null;
         removeAll(mob);
         mob = [];
         removeAll(powerUp);
@@ -1510,7 +1446,10 @@ const simulation = {
             body[len] = Matter.Bodies.fromVertices(0, 0, holdTarget.vertices, {
                 friction: holdTarget.friction,
                 frictionAir: holdTarget.frictionAir,
-                frictionStatic: holdTarget.frictionStatic
+                frictionStatic: holdTarget.frictionStatic,
+                isKey: holdTarget.isKey,
+                isImmutable: holdTarget.isImmutable,
+                draw: holdTarget.draw
             });
             Matter.Body.setPosition(body[len], m.pos);
             m.isHolding = true
@@ -1555,7 +1494,6 @@ const simulation = {
     // },
     testingOutput() {
         ctx.fillStyle = "#000";
-        ctx.textAlign = "center";
         ctx.fillText(`(${simulation.mouseInGame.x.toFixed(1)}, ${simulation.mouseInGame.y.toFixed(1)})`, simulation.mouse.x, simulation.mouse.y - 20);
     },
     sight: { //credit to Cornbread2100 for adding this algorithm to n-gon
@@ -1571,24 +1509,212 @@ const simulation = {
             best.dist = Math.sqrt(best.dist)
             return best;
         },
+        // getIntersections(v1, v1End, domain) {
+        //     const intersections = [];
+        //     for (const obj of domain) {
+        //         for (var i = 0; i < obj.vertices.length - 1; i++) {
+        //             results = simulation.checkLineIntersection(v1, v1End, obj.vertices[i], obj.vertices[i + 1]);
+        //             if (results.onLine1 && results.onLine2) intersections.push({ x: results.x, y: results.y });
+        //         }
+        //         results = simulation.checkLineIntersection(v1, v1End, obj.vertices[obj.vertices.length - 1], obj.vertices[0]);
+        //         if (results.onLine1 && results.onLine2) intersections.push({ x: results.x, y: results.y });
+        //     }
+        //     return intersections;
+        // },
+
+        // (Only adds an AABB guard + declares `results` with let.)
         getIntersections(v1, v1End, domain) {
+            const rayMinX = v1.x < v1End.x ? v1.x : v1End.x;
+            const rayMaxX = v1.x > v1End.x ? v1.x : v1End.x;
+            const rayMinY = v1.y < v1End.y ? v1.y : v1End.y;
+            const rayMaxY = v1.y > v1End.y ? v1.y : v1End.y;
+
+            function edgeBboxOverlapsRay(q1, q2) {
+                const edgeMinX = q1.x < q2.x ? q1.x : q2.x;
+                const edgeMaxX = q1.x > q2.x ? q1.x : q2.x;
+                const edgeMinY = q1.y < q2.y ? q1.y : q2.y;
+                const edgeMaxY = q1.y > q2.y ? q1.y : q2.y;
+                return !(rayMaxX < edgeMinX || edgeMaxX < rayMinX || rayMaxY < edgeMinY || edgeMaxY < rayMinY);
+            }
+
             const intersections = [];
+
             for (const obj of domain) {
-                for (var i = 0; i < obj.vertices.length - 1; i++) {
-                    results = simulation.checkLineIntersection(v1, v1End, obj.vertices[i], obj.vertices[i + 1]);
+                // iterate edges [i] -> [i+1]
+                for (let i = 0; i < obj.vertices.length - 1; i++) {
+                    const a = obj.vertices[i];
+                    const b = obj.vertices[i + 1];
+
+                    // Cheap reject: skip if segment bbox doesn't overlap ray bbox
+                    if (!edgeBboxOverlapsRay(a, b)) continue;
+
+                    const results = simulation.checkLineIntersection(v1, v1End, a, b);
                     if (results.onLine1 && results.onLine2) intersections.push({ x: results.x, y: results.y });
                 }
-                results = simulation.checkLineIntersection(v1, v1End, obj.vertices[obj.vertices.length - 1], obj.vertices[0]);
-                if (results.onLine1 && results.onLine2) intersections.push({ x: results.x, y: results.y });
+
+                // close the polygon: last -> first
+                const a = obj.vertices[obj.vertices.length - 1];
+                const b = obj.vertices[0];
+
+                if (edgeBboxOverlapsRay(a, b)) {
+                    const results = simulation.checkLineIntersection(v1, v1End, a, b);
+                    if (results.onLine1 && results.onLine2) intersections.push({ x: results.x, y: results.y });
+                }
             }
+
             return intersections;
         },
+
+        appendMapIntersections(v1, v1End, excludedBodyIndex, target) {
+            const rayMinX = v1.x < v1End.x ? v1.x : v1End.x;
+            const rayMaxX = v1.x > v1End.x ? v1.x : v1End.x;
+            const rayMinY = v1.y < v1End.y ? v1.y : v1End.y;
+            const rayMaxY = v1.y > v1End.y ? v1.y : v1End.y;
+            const rayDx = v1End.x - v1.x;
+            const rayDy = v1End.y - v1.y;
+
+            for (let bodyIndex = 0; bodyIndex < map.length; bodyIndex++) {
+                if (bodyIndex === excludedBodyIndex) continue;
+                const obj = map[bodyIndex];
+                const bounds = obj.bounds;
+                if (rayMaxX < bounds.min.x || bounds.max.x < rayMinX ||
+                    rayMaxY < bounds.min.y || bounds.max.y < rayMinY) continue;
+
+                const vertices = obj.vertices;
+                for (let edgeIndex = 0; edgeIndex < vertices.length; edgeIndex++) {
+                    const edgeStart = vertices[edgeIndex];
+                    const edgeEnd = vertices[(edgeIndex + 1) % vertices.length];
+                    const edgeMinX = edgeStart.x < edgeEnd.x ? edgeStart.x : edgeEnd.x;
+                    const edgeMaxX = edgeStart.x > edgeEnd.x ? edgeStart.x : edgeEnd.x;
+                    const edgeMinY = edgeStart.y < edgeEnd.y ? edgeStart.y : edgeEnd.y;
+                    const edgeMaxY = edgeStart.y > edgeEnd.y ? edgeStart.y : edgeEnd.y;
+                    if (rayMaxX < edgeMinX || edgeMaxX < rayMinX ||
+                        rayMaxY < edgeMinY || edgeMaxY < rayMinY) continue;
+
+                    const edgeDx = edgeEnd.x - edgeStart.x;
+                    const edgeDy = edgeEnd.y - edgeStart.y;
+                    const denominator = edgeDy * rayDx - edgeDx * rayDy;
+                    if (denominator === 0) continue;
+                    const offsetY = v1.y - edgeStart.y;
+                    const offsetX = v1.x - edgeStart.x;
+                    const rayFraction = (edgeDx * offsetY - edgeDy * offsetX) / denominator;
+                    const edgeFraction = (rayDx * offsetY - rayDy * offsetX) / denominator;
+                    if (rayFraction > 0 && rayFraction < 1 && edgeFraction > 0 && edgeFraction < 1) {
+                        target.push({
+                            x: v1.x + rayFraction * rayDx,
+                            y: v1.y + rayFraction * rayDy
+                        });
+                    }
+                }
+            }
+        },
+
+        circleLineCollisionsLegacy(a, b, c, radius) {
+            const angleOffset = Math.atan2(b.y - a.y, b.x - a.x);
+            const sideB = Math.sqrt((a.x - c.x) ** 2 + (a.y - c.y) ** 2);
+            const sideC = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+            const sideA = Math.sqrt((c.x - b.x) ** 2 + (c.y - b.y) ** 2);
+            const angleA = Math.acos((sideB ** 2 + sideC ** 2 - sideA ** 2) / (2 * sideB * sideC)) *
+                (a.x - c.x) / -Math.abs(a.x - c.x);
+            const sideAD = Math.cos(angleA) * sideB;
+            const d = {
+                x: Math.cos(angleOffset) * sideAD + a.x,
+                y: Math.sin(angleOffset) * sideAD + a.y
+            };
+            const distance = Math.sqrt((d.x - c.x) ** 2 + (d.y - c.y) ** 2);
+            if (distance == radius) return [d];
+            if (distance >= radius) return [];
+
+            const collisionAngle = Math.atan2(d.y - c.y, d.x - c.x);
+            const innerAngle = Math.acos(distance / radius);
+            const intersection1 = {
+                x: Math.cos(collisionAngle + innerAngle) * radius + c.x,
+                y: Math.sin(collisionAngle + innerAngle) * radius + c.y
+            };
+            const intersection2 = {
+                x: Math.cos(collisionAngle - innerAngle) * radius + c.x,
+                y: Math.sin(collisionAngle - innerAngle) * radius + c.y
+            };
+            const distance1A = Math.sqrt((intersection1.x - a.x) ** 2 + (intersection1.y - a.y) ** 2);
+            const distance1B = Math.sqrt((intersection1.x - b.x) ** 2 + (intersection1.y - b.y) ** 2);
+            const distance2A = Math.sqrt((intersection2.x - a.x) ** 2 + (intersection2.y - a.y) ** 2);
+            const distance2B = Math.sqrt((intersection2.x - b.x) ** 2 + (intersection2.y - b.y) ** 2);
+            const result = [];
+            if (Math.abs(sideC - (distance1A + distance1B)) < 0.01) {
+                result.push(intersection1);
+            } else if (distance1A < distance1B) {
+                if (sideB <= radius) result.push(a);
+            } else if (sideA <= radius) {
+                result.push(b);
+            }
+            if (Math.abs(sideC - (distance2A + distance2B)) < 0.01) {
+                result.push(intersection2);
+            } else if (distance2A <= distance2B) {
+                if (sideB <= radius) result.push(a);
+            } else if (sideA <= radius) {
+                result.push(b);
+            }
+            return result;
+        },
+
+        circleLineCollisions(a, b, c, radius) {
+            const edgeDx = b.x - a.x;
+            const edgeDy = b.y - a.y;
+            const edgeLengthSquared = edgeDx * edgeDx + edgeDy * edgeDy;
+            const centerDx = c.x - a.x;
+            const centerDy = c.y - a.y;
+            const side = edgeDx * centerDy - edgeDy * centerDx;
+            if (edgeLengthSquared === 0 || a.x === c.x || side === 0) {
+                return simulation.sight.circleLineCollisionsLegacy(a, b, c, radius);
+            }
+
+            const closestFraction = (centerDx * edgeDx + centerDy * edgeDy) / edgeLengthSquared;
+            const closestX = a.x + closestFraction * edgeDx;
+            const closestY = a.y + closestFraction * edgeDy;
+            const closestDx = closestX - c.x;
+            const closestDy = closestY - c.y;
+            const closestDistanceSquared = closestDx * closestDx + closestDy * closestDy;
+            const radiusSquared = radius * radius;
+            if (closestDistanceSquared === radiusSquared) return [{ x: closestX, y: closestY }];
+            if (closestDistanceSquared >= radiusSquared) return [];
+
+            const edgeLength = Math.sqrt(edgeLengthSquared);
+            const rootOffset = Math.sqrt(radiusSquared - closestDistanceSquared) / edgeLength;
+            const lowerFraction = closestFraction - rootOffset;
+            const upperFraction = closestFraction + rootOffset;
+            const firstFraction = side > 0 ? upperFraction : lowerFraction;
+            const secondFraction = side > 0 ? lowerFraction : upperFraction;
+            const fractionTolerance = 0.005 / edgeLength;
+            const aInside = centerDx * centerDx + centerDy * centerDy <= radiusSquared;
+            const bCenterDx = b.x - c.x;
+            const bCenterDy = b.y - c.y;
+            const bInside = bCenterDx * bCenterDx + bCenterDy * bCenterDy <= radiusSquared;
+            const result = [];
+
+            function appendCollision(fraction) {
+                if (fraction > -fractionTolerance && fraction < 1 + fractionTolerance) {
+                    result.push({
+                        x: a.x + fraction * edgeDx,
+                        y: a.y + fraction * edgeDy
+                    });
+                } else if (fraction < 0.5) {
+                    if (aInside) result.push(a);
+                } else if (bInside) {
+                    result.push(b);
+                }
+            }
+
+            appendCollision(firstFraction);
+            appendCollision(secondFraction);
+            return result;
+        },
+
         circleLoS(pos, radius) {
             function allCircleLineCollisions(c, radius, domain) {
                 var lines = [];
                 for (const obj of domain) {
-                    for (var i = 0; i < obj.vertices.length - 1; i++) lines.push(circleLineCollisions(obj.vertices[i], obj.vertices[i + 1], c, radius));
-                    lines.push(circleLineCollisions(obj.vertices[obj.vertices.length - 1], obj.vertices[0], c, radius));
+                    for (var i = 0; i < obj.vertices.length - 1; i++) lines.push(simulation.sight.circleLineCollisions(obj.vertices[i], obj.vertices[i + 1], c, radius));
+                    lines.push(simulation.sight.circleLineCollisions(obj.vertices[obj.vertices.length - 1], obj.vertices[0], c, radius));
                 }
                 const collisionLines = [];
                 for (const line of lines) {
@@ -1612,73 +1738,6 @@ const simulation = {
                 return collisionLines;
             }
 
-            function circleLineCollisions(a, b, c, radius) {
-                // calculate distances
-                const angleOffset = Math.atan2(b.y - a.y, b.x - a.x);
-                const sideB = Math.sqrt((a.x - c.x) ** 2 + (a.y - c.y) ** 2);
-                const sideC = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
-                const sideA = Math.sqrt((c.x - b.x) ** 2 + (c.y - b.y) ** 2);
-
-                // calculate the closest point on line AB to point C
-                const angleA = Math.acos((sideB ** 2 + sideC ** 2 - sideA ** 2) / (2 * sideB * sideC)) * (a.x - c.x) / -Math.abs(a.x - c.x)
-                const sideAD = Math.cos(angleA) * sideB;
-                const d = { // closest point
-                    x: Math.cos(angleOffset) * sideAD + a.x,
-                    y: Math.sin(angleOffset) * sideAD + a.y
-                }
-                const distance = Math.sqrt((d.x - c.x) ** 2 + (d.y - c.y) ** 2);
-                if (distance == radius) {
-                    // tangent
-                    return [d];
-                } else if (distance < radius) {
-                    // secant
-                    const angleOffset = Math.atan2(d.y - c.y, d.x - c.x);
-                    const innerAngle = Math.acos(distance / radius);
-                    const intersection1 = {
-                        x: Math.cos(angleOffset + innerAngle) * radius + c.x,
-                        y: Math.sin(angleOffset + innerAngle) * radius + c.y
-                    }
-
-                    const intersection2 = {
-                        x: Math.cos(angleOffset - innerAngle) * radius + c.x,
-                        y: Math.sin(angleOffset - innerAngle) * radius + c.y
-                    }
-
-                    const distance1 = {
-                        a: Math.sqrt((intersection1.x - a.x) ** 2 + (intersection1.y - a.y) ** 2),
-                        b: Math.sqrt((intersection1.x - b.x) ** 2 + (intersection1.y - b.y) ** 2)
-                    }
-                    const distance2 = {
-                        a: Math.sqrt((intersection2.x - a.x) ** 2 + (intersection2.y - a.y) ** 2),
-                        b: Math.sqrt((intersection2.x - b.x) ** 2 + (intersection2.y - b.y) ** 2)
-                    }
-                    const result = [];
-                    if (Math.abs(sideC - (distance1.a + distance1.b)) < 0.01) {
-                        result.push(intersection1);
-                    } else {
-                        if (distance1.a < distance1.b) {
-                            if (sideB <= radius) result.push(a);
-                        } else {
-                            if (sideA <= radius) result.push(b)
-                        }
-                    }
-                    if (Math.abs(sideC - (distance2.a + distance2.b)) < 0.01) {
-                        result.push(intersection2);
-                    } else {
-                        if (distance2.a <= distance2.b) {
-                            if (sideB <= radius) result.push(a);
-                        } else {
-                            if (sideA <= radius) result.push(b)
-                        }
-                    }
-
-                    return result;
-                } else {
-                    // no intersection
-                    return [];
-                }
-            }
-
             var vertices = [];
             for (const obj of simulation.sight.intersectMap) {
                 for (var i = 0; i < obj.vertices.length; i++) {
@@ -1688,7 +1747,7 @@ const simulation = {
                     // const queryPoint = { x: Math.cos(angleToVertex) * (distanceToVertex - 1) + pos.x, y: Math.sin(angleToVertex) * (distanceToVertex - 1) + pos.y }
                     const queryPoint = { x: Math.cos(angleToVertex + Math.PI) + vertex.x, y: Math.sin(angleToVertex + Math.PI) + vertex.y }
 
-                    if (Matter.Query.ray(map, pos, queryPoint).length == 0) {
+                    if (!Matter.Query.segmentAny(map, pos, queryPoint)) {
                         var distance = Math.sqrt((vertex.x - pos.x) ** 2 + (vertex.y - pos.y) ** 2);
                         var endPoint = { x: vertex.x, y: vertex.y }
 
@@ -1726,7 +1785,7 @@ const simulation = {
                     const distance = Math.sqrt((vertex.x - pos.x) ** 2 + (vertex.y - pos.y) ** 2)
                     const angle = Math.atan2(vertex.y - pos.y, vertex.x - pos.x);
                     const queryPoint = { x: Math.cos(angle + Math.PI) + vertex.x, y: Math.sin(angle + Math.PI) + vertex.y }
-                    if (Math.abs(distance - radius) < 1 && Matter.Query.ray(map, pos, queryPoint).length == 0) circleCollisions.push(vertex)
+                    if (Math.abs(distance - radius) < 1 && !Matter.Query.segmentAny(map, pos, queryPoint)) circleCollisions.push(vertex)
                 }
             }
             for (var i = 0; i < circleCollisions.length; i++) {
@@ -1765,74 +1824,19 @@ const simulation = {
         },
     },
     draw: {
-        // powerUp() { //is set by Bayesian tech
-        //     // ctx.globalAlpha = 0.4 * Math.sin(m.cycle * 0.15) + 0.6;
-        //     // for (let i = 0, len = powerUp.length; i < len; ++i) {
-        //     //   ctx.beginPath();
-        //     //   ctx.arc(powerUp[i].position.x, powerUp[i].position.y, powerUp[i].size, 0, 2 * Math.PI);
-        //     //   ctx.fillStyle = powerUp[i].color;
-        //     //   ctx.fill();
-        //     // }
-        //     // ctx.globalAlpha = 1;
-        // },
-        // powerUpNormal() { //back up in case power up draw gets changed
-        //     ctx.globalAlpha = 0.4 * Math.sin(m.cycle * 0.15) + 0.6;
-        //     for (let i = 0, len = powerUp.length; i < len; ++i) {
-        //         ctx.beginPath();
-        //         ctx.arc(powerUp[i].position.x, powerUp[i].position.y, powerUp[i].size, 0, 2 * Math.PI);
-        //         ctx.fillStyle = powerUp[i].color;
-        //         ctx.fill();
-        //     }
-        //     ctx.globalAlpha = 1;
-        // },
-        // powerUpBonus() { //draws crackle effect for bonus power ups
-        //     ctx.globalAlpha = 0.4 * Math.sin(m.cycle * 0.15) + 0.6;
-        //     for (let i = 0, len = powerUp.length; i < len; ++i) {
-        //         ctx.beginPath();
-        //         ctx.arc(powerUp[i].position.x, powerUp[i].position.y, powerUp[i].size, 0, 2 * Math.PI);
-        //         ctx.fillStyle = powerUp[i].color;
-        //         ctx.fill();
-        //     }
-        //     ctx.globalAlpha = 1;
-        //     for (let i = 0, len = powerUp.length; i < len; ++i) {
-        //         if (powerUp[i].isDuplicated && Math.random() < 0.1) {
-        //             //draw electricity
-        //             const mag = 5 + powerUp[i].size / 5
-        //             let unit = Vector.rotate({
-        //                 x: mag,
-        //                 y: mag
-        //             }, 2 * Math.PI * Math.random())
-        //             let path = {
-        //                 x: powerUp[i].position.x + unit.x,
-        //                 y: powerUp[i].position.y + unit.y
-        //             }
-        //             ctx.beginPath();
-        //             ctx.moveTo(path.x, path.y);
-        //             for (let i = 0; i < 6; i++) {
-        //                 unit = Vector.rotate(unit, 3 * (Math.random() - 0.5))
-        //                 path = Vector.add(path, unit)
-        //                 ctx.lineTo(path.x, path.y);
-        //             }
-        //             ctx.lineWidth = 0.5 + 2 * Math.random();
-        //             ctx.strokeStyle = "#000"
-        //             ctx.stroke();
-        //         }
-        //     }
-        // },
 
-        // map: function() {
-        //     ctx.beginPath();
-        //     for (let i = 0, len = map.length; i < len; ++i) {
-        //         let vertices = map[i].vertices;
-        //         ctx.moveTo(vertices[0].x, vertices[0].y);
-        //         for (let j = 1; j < vertices.length; j += 1) {
-        //             ctx.lineTo(vertices[j].x, vertices[j].y);
-        //         }
-        //         ctx.lineTo(vertices[0].x, vertices[0].y);
-        //     }
-        //     ctx.fillStyle = "#444";
-        //     ctx.fill();
-        // },
+        isMapPathRebuildPending: false,
+        requestMapPathRebuild() {
+            simulation.draw.isMapPathRebuildPending = true;
+        },
+        flushMapPathRebuild() {
+            if (!simulation.draw.isMapPathRebuildPending) return false;
+            simulation.draw.isMapPathRebuildPending = false;
+            simulation.draw.setPaths();
+            simulation.draw.lineOfSightPrecalculation();
+            return true;
+        },
+
         mapPath: null, //holds the path for the map to speed up drawing
         setPaths() {
             //runs at each new level to store the path for the map since the map doesn't change
@@ -1848,18 +1852,19 @@ const simulation = {
         },
         lineOfSightPrecalculation() {
             simulation.sight.intersectMap = [];
-            for (var i = 0; i < map.length; i++) {
+            for (let i = 0; i < map.length; i++) {
                 const obj = map[i];
                 const newVertices = [];
-                const restOfMap = [...map].slice(0, i).concat([...map].slice(i + 1))
-                for (var j = 0; j < obj.vertices.length - 1; j++) {
-                    var intersections = simulation.sight.getIntersections(obj.vertices[j], obj.vertices[j + 1], restOfMap);
-                    newVertices.push(obj.vertices[j]);
-                    for (const vertex of intersections) newVertices.push({ x: vertex.x, y: vertex.y });
+                for (let j = 0; j < obj.vertices.length; j++) {
+                    const vertex = obj.vertices[j];
+                    newVertices.push(vertex);
+                    simulation.sight.appendMapIntersections(
+                        vertex,
+                        obj.vertices[(j + 1) % obj.vertices.length],
+                        i,
+                        newVertices
+                    );
                 }
-                intersections = simulation.sight.getIntersections(obj.vertices[obj.vertices.length - 1], obj.vertices[0], restOfMap);
-                newVertices.push(obj.vertices[obj.vertices.length - 1]);
-                for (const vertex of intersections) newVertices.push({ x: vertex.x, y: vertex.y });
                 //draw the vertices as black circles for debugging
                 // for (const vertex of newVertices) {
                 //     ctx.beginPath();
@@ -1923,7 +1928,7 @@ const simulation = {
                 }
             }
         },
-        body() {
+        bodyDefault() {
             ctx.beginPath();
             for (let i = 0, len = body.length; i < len; ++i) {
                 let vertices = body[i].vertices;
@@ -1939,6 +1944,7 @@ const simulation = {
             ctx.strokeStyle = color.blockS;
             ctx.stroke();
         },
+        body() { },
         cons() {
             ctx.beginPath();
             for (let i = 0, len = cons.length; i < len; ++i) {
@@ -1956,9 +1962,6 @@ const simulation = {
             ctx.stroke();
         },
         wireFrame() {
-            // ctx.textAlign = "center";
-            // ctx.textBaseline = "middle";
-            // ctx.fillStyle = "#999";
             const bodies = Composite.allBodies(engine.world);
             ctx.beginPath();
             for (let i = 0; i < bodies.length; ++i) {
@@ -2006,7 +2009,7 @@ const simulation = {
                 ctx.lineTo(bodyDraw[j].x, bodyDraw[j].y);
             }
             ctx.lineTo(bodyDraw[0].x, bodyDraw[0].y);
-            ctx.fillStyle = "rgba(255, 255, 0, 0.4)";
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
             ctx.fill();
             // ctx.stroke();
             //head sensor
@@ -2020,6 +2023,451 @@ const simulation = {
             ctx.fillStyle = "rgba(0, 0, 255, 0.25)";
             ctx.fill();
             // ctx.stroke();
+        },
+        font: {
+            word: new Path2D(),
+            xPos: 0,
+            yPos: 0,
+            drawString(text, x, y) {
+                this.xPos = x
+                this.yPos = y
+                const letters = text.toLowerCase().split('')
+                letters.forEach((letter, index) => {
+                    if (letter >= 'a' && letter <= 'z' && this[letter]) {
+                        this[letter]()
+                        if (index < letters.length - 1) {
+                            this.xPos += 29
+                        }
+                    } else if (letter === ' ') {
+                        this.xPos += 29
+                    }
+                })
+            },
+            a() {
+                this.word.moveTo(this.xPos - 1, this.yPos + 40)
+                this.word.lineTo(this.xPos + 10, this.yPos + 0)
+                this.word.lineTo(this.xPos + 21, this.yPos + 40)
+                this.word.moveTo(this.xPos + 5, this.yPos + 20)
+                this.word.lineTo(this.xPos + 15, this.yPos + 20)
+            },
+            b() {
+                this.word.moveTo(this.xPos + 1, this.yPos);
+                this.word.lineTo(this.xPos + 1, this.yPos + 40);
+                this.word.moveTo(this.xPos + 1, this.yPos);
+                this.word.bezierCurveTo(this.xPos + 22, this.yPos, this.xPos + 22, this.yPos + 20, this.xPos + 1, this.yPos + 20);
+                this.word.moveTo(this.xPos + 1, this.yPos + 20);
+                this.word.bezierCurveTo(this.xPos + 25, this.yPos + 20, this.xPos + 25, this.yPos + 40, this.xPos + 1, this.yPos + 40);
+            },
+            c() {
+                // Calculate the starting point on the ellipse to move to
+                const startAngle = 0.2 * Math.PI;
+                const startX = (this.xPos + 11) + (11 * Math.cos(startAngle));
+                const startY = (this.yPos + 20) + (20 * Math.sin(startAngle));
+                this.word.moveTo(startX, startY);
+
+                // Draws a smooth partial ellipse for the 'C'
+                this.word.ellipse(this.xPos + 11, this.yPos + 20, 11, 20, 0, startAngle, 1.8 * Math.PI);
+            },
+            d() {
+                this.word.moveTo(this.xPos + 0, this.yPos);
+                this.word.lineTo(this.xPos + 0, this.yPos + 40);
+                // this.word.moveTo(this.xPos + 3, this.yPos + 40);
+                this.word.arcTo(this.xPos + 19, this.yPos + 40, this.xPos + 19, this.yPos + 20, 20);
+                this.word.arcTo(this.xPos + 19, this.yPos, this.xPos + 1, this.yPos, 20);
+            },
+            e() {
+                this.word.moveTo(this.xPos + 19, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 20)
+                this.word.moveTo(this.xPos + 0, this.yPos + 20)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 19, this.yPos + 40)
+            },
+            f() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 19, this.yPos + 0)
+                this.word.moveTo(this.xPos + 0, this.yPos + 20)
+                this.word.lineTo(this.xPos + 16, this.yPos + 20)
+            },
+            g() {
+                // Rounded G with curved edges
+                this.word.moveTo(this.xPos + 17, this.yPos + 6);
+                this.word.bezierCurveTo(this.xPos + 17, this.yPos + 2, this.xPos + 14, this.yPos + 0, this.xPos + 8, this.yPos + 0);
+                this.word.bezierCurveTo(this.xPos + 3, this.yPos + 0, this.xPos + 0, this.yPos + 4, this.xPos + 0, this.yPos + 20);
+                this.word.bezierCurveTo(this.xPos + 0, this.yPos + 36, this.xPos + 3, this.yPos + 40, this.xPos + 8, this.yPos + 40);
+                this.word.bezierCurveTo(this.xPos + 14, this.yPos + 40, this.xPos + 17, this.yPos + 36, this.xPos + 17, this.yPos + 30);
+                this.word.lineTo(this.xPos + 17, this.yPos + 20);
+                this.word.lineTo(this.xPos + 10, this.yPos + 20);
+            },
+            // g() {
+            //     this.word.moveTo(this.xPos + 17, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 10, this.yPos + 20)
+            // },
+            h() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.moveTo(this.xPos + 0, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 40)
+                this.word.moveTo(this.xPos + 17, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            },
+            i() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 19, this.yPos + 0)
+                this.word.moveTo(this.xPos + 9, this.yPos + 0)
+                this.word.lineTo(this.xPos + 9, this.yPos + 40)
+                this.word.moveTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 19, this.yPos + 40)
+            },
+            // j() {
+            //     this.word.moveTo(this.xPos + 18, this.yPos + 0);
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 40);
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 40);
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 30);
+            // },
+            j() {
+                // Rounded J with curved bottom
+                this.word.moveTo(this.xPos + 18, this.yPos + 0);
+                this.word.lineTo(this.xPos + 18, this.yPos + 30);
+                this.word.bezierCurveTo(this.xPos + 18, this.yPos + 37, this.xPos + 14, this.yPos + 40, this.xPos + 8, this.yPos + 40);
+                this.word.bezierCurveTo(this.xPos + 2, this.yPos + 40, this.xPos + 0, this.yPos + 37, this.xPos + 0, this.yPos + 30);
+            },
+            k() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.moveTo(this.xPos + 0, this.yPos + 20)
+                this.word.lineTo(this.xPos + 19, this.yPos + 0)
+                this.word.moveTo(this.xPos + 4, this.yPos + 17)
+                this.word.lineTo(this.xPos + 19, this.yPos + 40)
+            },
+            l() {
+                this.word.moveTo(this.xPos + 1, this.yPos + 0)
+                this.word.lineTo(this.xPos + 1, this.yPos + 40)
+                this.word.lineTo(this.xPos + 20, this.yPos + 40)
+            },
+            m() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 9, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+                this.word.lineTo(this.xPos + 17, this.yPos + 40)
+            },
+            n() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 17, this.yPos + 40)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            },
+            o() {
+                this.word.moveTo(this.xPos + 20, this.yPos + 20);
+                this.word.ellipse(this.xPos + 9, this.yPos + 20, 11, 20, 0, 0, 2 * Math.PI);
+            },
+            p() {
+                // Rounded P with curved top section
+                this.word.moveTo(this.xPos + 0, this.yPos + 40);
+                this.word.lineTo(this.xPos + 0, this.yPos + 0);
+                this.word.lineTo(this.xPos + 10, this.yPos + 0);
+                this.word.bezierCurveTo(this.xPos + 15, this.yPos + 0, this.xPos + 18, this.yPos + 3, this.xPos + 18, this.yPos + 10);
+                this.word.bezierCurveTo(this.xPos + 18, this.yPos + 17, this.xPos + 15, this.yPos + 20, this.xPos + 10, this.yPos + 20);
+                this.word.lineTo(this.xPos + 0, this.yPos + 20);
+            },
+            // p() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 20)
+            // },
+            q() {
+                this.word.moveTo(this.xPos + 20, this.yPos + 20);
+                this.word.ellipse(this.xPos + 9, this.yPos + 20, 11, 20, 0, 0, 2 * Math.PI);
+                this.word.moveTo(this.xPos + 12, this.yPos + 28);
+                this.word.lineTo(this.xPos + 20, this.yPos + 40);
+            },
+            r() {
+                // Rounded R with curved top section
+                this.word.moveTo(this.xPos + 0, this.yPos + 40);
+                this.word.lineTo(this.xPos + 0, this.yPos + 0);
+                this.word.lineTo(this.xPos + 10, this.yPos + 0);
+                this.word.bezierCurveTo(this.xPos + 15, this.yPos + 0, this.xPos + 18, this.yPos + 3, this.xPos + 18, this.yPos + 10);
+                this.word.bezierCurveTo(this.xPos + 18, this.yPos + 17, this.xPos + 15, this.yPos + 20, this.xPos + 10, this.yPos + 20);
+                this.word.lineTo(this.xPos + 0, this.yPos + 20);
+                this.word.moveTo(this.xPos + 8, this.yPos + 20);
+                this.word.lineTo(this.xPos + 18, this.yPos + 40);
+            },
+            // r() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 19, this.yPos + 40)
+            // },
+            // s() {
+            //     this.word.moveTo(this.xPos + 18, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 20)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 40)
+            // },
+            s() {
+                // Rounded S shape using curves
+                this.word.moveTo(this.xPos + 18, this.yPos + 6);
+                this.word.bezierCurveTo(this.xPos + 18, this.yPos + 2, this.xPos + 15, this.yPos + 0, this.xPos + 9, this.yPos + 0);
+                this.word.bezierCurveTo(this.xPos + 3, this.yPos + 0, this.xPos + 0, this.yPos + 3, this.xPos + 0, this.yPos + 8);
+                this.word.bezierCurveTo(this.xPos + 0, this.yPos + 13, this.xPos + 3, this.yPos + 16, this.xPos + 9, this.yPos + 18);
+                this.word.bezierCurveTo(this.xPos + 15, this.yPos + 20, this.xPos + 18, this.yPos + 24, this.xPos + 18, this.yPos + 32);
+                this.word.bezierCurveTo(this.xPos + 18, this.yPos + 37, this.xPos + 15, this.yPos + 40, this.xPos + 9, this.yPos + 40);
+                this.word.bezierCurveTo(this.xPos + 3, this.yPos + 40, this.xPos + 0, this.yPos + 37, this.xPos + 0, this.yPos + 34);
+            },
+            t() {
+                this.word.moveTo(this.xPos - 1, this.yPos + 0)
+                this.word.lineTo(this.xPos + 21, this.yPos + 0)
+                this.word.moveTo(this.xPos + 10, this.yPos + 0)
+                this.word.lineTo(this.xPos + 10, this.yPos + 40)
+            },
+            // u() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 40)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            // },
+            u() {
+                // Rounded U with curved bottom
+                this.word.moveTo(this.xPos + 0, this.yPos + 0);
+                this.word.lineTo(this.xPos + 0, this.yPos + 30);
+                this.word.bezierCurveTo(this.xPos + 0, this.yPos + 37, this.xPos + 3, this.yPos + 40, this.xPos + 8, this.yPos + 40);
+                this.word.bezierCurveTo(this.xPos + 14, this.yPos + 40, this.xPos + 17, this.yPos + 37, this.xPos + 17, this.yPos + 30);
+                this.word.lineTo(this.xPos + 17, this.yPos + 0);
+            },
+            v() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 8, this.yPos + 40)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            },
+            w() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 8, this.yPos + 20)
+                this.word.lineTo(this.xPos + 17, this.yPos + 40)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+            },
+            x() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 19, this.yPos + 40)
+                this.word.moveTo(this.xPos + 19, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+            },
+            y() {
+                this.word.moveTo(this.xPos + -1, this.yPos + 0);
+                this.word.lineTo(this.xPos + 10, this.yPos + 20);
+                this.word.lineTo(this.xPos + 21, this.yPos + 0);
+                this.word.moveTo(this.xPos + 10, this.yPos + 20);
+                this.word.lineTo(this.xPos + 10, this.yPos + 40);
+            },
+            z() {
+                this.word.moveTo(this.xPos + 0, this.yPos + 0)
+                this.word.lineTo(this.xPos + 17, this.yPos + 0)
+                this.word.lineTo(this.xPos + 0, this.yPos + 40)
+                this.word.lineTo(this.xPos + 17, this.yPos + 40)
+            }
+            //letters are 50 tall and 40 wide
+            // a() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 10, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 30, this.yPos + 25)
+            // },
+            // b() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 37)
+            //     this.word.lineTo(this.xPos + 10, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 12)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            // },
+            // c() {
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // d() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            // },
+            // e() {
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 25, this.yPos + 25)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // f() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 27, this.yPos + 25)
+            // },
+            // g() {
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 25)
+            // },
+            // h() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            // },
+            // i() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.moveTo(this.xPos + 17, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // j() {
+            //     this.word.moveTo(this.xPos + 34, this.yPos + 0);
+            //     this.word.lineTo(this.xPos + 34, this.yPos + 50);
+            //     this.word.lineTo(this.xPos + 3, this.yPos + 50);
+            //     this.word.lineTo(this.xPos + 3, this.yPos + 37);
+            // },
+            // k() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // l() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // m() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // n() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            // },
+            // o() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 15)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 15)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 35)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 35)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 15)
+            // },
+            // p() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 25)
+            // },
+            // q() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 15)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 15)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 35)
+            //     this.word.lineTo(this.xPos + 18, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 35)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 15)
+            //     this.word.moveTo(this.xPos + 20, this.yPos + 30)
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 50)
+            // },
+            // r() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 30, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 30, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // },
+            // s() {
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            // },
+            // t() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 0)
+            //     this.word.moveTo(this.xPos + 20, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 50)
+            // },
+            // u() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            // },
+            // v() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 17, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            // },
+            // w() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 25)
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 0)
+            // },
+            // x() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            //     this.word.moveTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            // },
+            // y() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0);
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 25);
+            //     this.word.lineTo(this.xPos + 40, this.yPos + 0);
+            //     this.word.moveTo(this.xPos + 20, this.yPos + 25);
+            //     this.word.lineTo(this.xPos + 20, this.yPos + 50);
+            // },
+            // z() {
+            //     this.word.moveTo(this.xPos + 0, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 0)
+            //     this.word.lineTo(this.xPos + 0, this.yPos + 50)
+            //     this.word.lineTo(this.xPos + 35, this.yPos + 50)
+            // }
         }
     },
     checkLineIntersection(v1, v1End, v2, v2End) {
@@ -2073,6 +2521,7 @@ const simulation = {
         }
     },
     enableConstructMode() {
+        tech.giveTech('motion sickness') //for precise mouse control
         level.isProcedural = false //this is set to be true in levels like labs that need x+ and y+ in front of positions
         level.isVerticalFLipLevel = false
         simulation.isConstructionMode = true;
@@ -2092,13 +2541,9 @@ const simulation = {
                 const dx = Math.max(25, round(simulation.mouseInGame.x) - x)
                 const dy = Math.max(25, round(simulation.mouseInGame.y) - y)
                 if (e.button === 1) {
-                    if (level.isProcedural) {
-                        simulation.outputMapString(`spawn.randomMob(x+${x}, ${y}, 0);\n`);
-                    } else {
-                        simulation.outputMapString(`spawn.randomMob(${x}, ${y}, 0);\n`);
-                    }
+                    simulation.outputMapString(`[${x}, ${y}],\n`);
                 } else if (e.button === 4) {
-                    simulation.outputMapString(`${Math.floor(simulation.constructMouseDownPosition.x)}, ${Math.floor(simulation.constructMouseDownPosition.y)}`);
+                    simulation.outputMapString(`${Math.floor(simulation.constructMouseDownPosition.x)}, ${Math.floor(simulation.constructMouseDownPosition.y)} `);
                 } else if (simulation.mouseInGame.x > simulation.constructMouseDownPosition.x && simulation.mouseInGame.y > simulation.constructMouseDownPosition.y) { //make sure that the width and height are positive
                     if (e.button === 0) { //add map
                         // if (level.isProcedural) {
@@ -2192,40 +2637,4 @@ const simulation = {
         });
         document.getElementById("construct").innerHTML = outHTML
     },
-    // copyToClipBoard(value) {
-    //     // Create a fake textarea
-    //     const textAreaEle = document.createElement('textarea');
-
-    //     // Reset styles
-    //     textAreaEle.style.border = '0';
-    //     textAreaEle.style.padding = '0';
-    //     textAreaEle.style.margin = '0';
-
-    //     // Set the absolute position
-    //     // User won't see the element
-    //     textAreaEle.style.position = 'absolute';
-    //     textAreaEle.style.left = '-9999px';
-    //     textAreaEle.style.top = `0px`;
-
-    //     // Set the value
-    //     textAreaEle.value = value
-
-    //     // Append the textarea to body
-    //     document.body.appendChild(textAreaEle);
-
-    //     // Focus and select the text
-    //     textAreaEle.focus();
-    //     textAreaEle.select();
-
-    //     // Execute the "copy" command
-    //     try {
-    //         document.execCommand('copy');
-    //     } catch (err) {
-    //         // Unable to copy
-    //         console.log(err)
-    //     } finally {
-    //         // Remove the textarea
-    //         document.body.removeChild(textAreaEle);
-    //     }
-    // },
 };

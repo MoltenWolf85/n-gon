@@ -1,30 +1,14 @@
 "use strict";
 
-//list of the recent github hashes, shortened to the first 7 digits of the full hash.
-//the last element of the array is the most recent commit
-// const commitHashes = ['6472d6d', 'c8bf77d', 'eb8f4b0', 'f556371', '74f569b', 'c9f355b', '6814c10', '9402cf2', 'f8b4b6f', '82c0ea8', 'f9849d4', 'd00a94a', '3654198', '9bcf4d3', 'eecf763', 'be109bb', 'e2bf9aa', '3ea8bfd', 'c614451', '1752453', '34e05c7', '07af7a7', '2e76b5c', '1b23dec', '0b728fb', 'e6e5058', '4f87444', 'e418b93', 'b3fa1bf', '09c9e93', 'd8e978f', 'da559f4', '1d4b0c4', '4415942', '6cd2502', '8a211e8', '3d423a5', '4933ef5', '77cafe3', 'bffaeed', '99bd1c8', '8a3ac11', 'bf5f866', 'b14f2c1', 'ff613dc', '1129b9d', '3844d00', 'e9d2262', 'ce74f42', 'ad33cf6', '2d12f1d', 'c47d860', '4e6acdd', '778a2c9', '68f9269', '17f65cf', 'b5e4b0d', '38d9931', '64f2a9f', '64c81cd', '254ec00', '38ef45a', '1728b53', 'fde3a58', '6c3d97a', '951806d', '2b99e59', '3ce6bec', '773ee5c', '4c6b480', 'a1164ed', '507b060', '63bfaba', 'eabd146', '438c166', '1903b9e', '5e12cea', 'f43a5e3', '022e2fa', '20f9b79', 'fc70dfe', '5eae070', '8dacb02', '52046ca', '220a6b4', 'ebd2274', 'cea1c64', 'a47ef97', 'a8c6c0e', '9c2c9be', '8bb8222', '1fde74d', 'f1a6713', '97c5509', '1966173', '2daeae1', '1040d1f', 'c9a5ab9', '77e484c', 'b2426cd']
-// const lastShortHash = 'b2426cd'
-//Landgreen needs to update the commitHashes array with the most recent commit hash on each new upload, but the array will always be missing the current hash since it is generated with each new commit
-//write code to check the 2nd most recent hash and see if it match an element in the commitHashes array.  Use that to calculate how many commits have been made since the last update
-
-
-
 //convert text into numbers for seed
 Math.hash = s => {
     for (var i = 0, h = 9; i < s.length;) h = Math.imul(h ^ s.charCodeAt(i++), 9 ** 9);
     return h ^ h >>> 9
 }
 
-// const date1 = new Date()
-// console.log(date1.getUTCHours())
-// document.getElementById("seed").placeholder = Math.initialSeed = String(date1.getUTCDate() * date1.getUTCFullYear()) // daily seed,  day + year
-
-// document.getElementById("seed").placeholder = Math.initialSeed = Math.floor(Date.now() % 100000) //random every time:  just the time in milliseconds UTC
-
+// simulation.inGameConsole(`<strong style='color:red;'>ERROR:</strong> ${error.message}  <u>${error.filename}:${error.lineno}</u>`)
 window.addEventListener('error', error => {
-    // simulation.inGameConsole(`<strong style='color:red;'>ERROR:</strong> ${error.message}  <u>${error.filename}:${error.lineno}</u>`)
     simulation.inGameConsole(`<strong style='color:red;'>ERROR:</strong> ${(error.stack && error.stack.replace(/\n/g, "<br>")) || (error.message + ` <u>${error.filename}:${error.lineno}</u>`)}`);
-
 });
 
 document.getElementById("seed").placeholder = Math.initialSeed = String(Math.floor(Date.now() % 100000))
@@ -97,24 +81,41 @@ function seededShuffle(array) {
 //     return best
 // }
 //this function is used for finding the point where a ray hits things,  used for lasers mostly
-function vertexCollision(v1, v1End, domains) {  //= [map, body, [playerBody, playerHead]]     //m.isCloak ? [map, body] : [map, body, [playerBody, playerHead]]
-    let results
+function vertexCollision(v1, v1End, domains, minHitDistance2 = 0) {  //= [map, body, [playerBody, playerHead]]     //m.isCloak ? [map, body] : [map, body, [playerBody, playerHead]]
     let best = { x: null, y: null, dist2: Infinity, who: null, v1: null, v2: null };
+    const rayX = v1End.x - v1.x;
+    const rayY = v1End.y - v1.y;
+    const rayMinX = v1.x < v1End.x ? v1.x : v1End.x;
+    const rayMaxX = v1.x > v1End.x ? v1.x : v1End.x;
+    const rayMinY = v1.y < v1End.y ? v1.y : v1End.y;
+    const rayMaxY = v1.y > v1End.y ? v1.y : v1End.y;
     for (let j = 0; j < domains.length; j++) {
         let domain = domains[j]
         for (let i = 0; i < domain.length; ++i) {
+            const bounds = domain[i].bounds;
+            if (rayMaxX < bounds.min.x || bounds.max.x < rayMinX || rayMaxY < bounds.min.y || bounds.max.y < rayMinY) continue;
+            if (domain[i].mob && !domain[i].alive) continue;
             let vertices = domain[i].vertices;
             const len = vertices.length - 1;
             for (let j = 0; j < len; j++) {
-                results = simulation.checkLineIntersection(v1, v1End, vertices[j], vertices[j + 1]);
-                if (results.onLine1 && results.onLine2) {
-                    const dx = v1.x - results.x;
-                    const dy = v1.y - results.y;
+                const edgeX = vertices[j + 1].x - vertices[j].x;
+                const edgeY = vertices[j + 1].y - vertices[j].y;
+                const denominator = edgeY * rayX - edgeX * rayY;
+                if (denominator !== 0) {
+                    const offsetY = v1.y - vertices[j].y;
+                    const offsetX = v1.x - vertices[j].x;
+                    const a = (edgeX * offsetY - edgeY * offsetX) / denominator;
+                    const b = (rayX * offsetY - rayY * offsetX) / denominator;
+                    if (!(a > 0 && a < 1 && b > 0 && b < 1)) continue;
+                    const x = v1.x + a * rayX;
+                    const y = v1.y + a * rayY;
+                    const dx = v1.x - x;
+                    const dy = v1.y - y;
                     const dist2 = dx * dx + dy * dy;
-                    if (dist2 < best.dist2 && (!domain[i].mob || domain[i].alive)) {
+                    if (dist2 >= minHitDistance2 && dist2 < best.dist2) {
                         best = {
-                            x: results.x,
-                            y: results.y,
+                            x: x,
+                            y: y,
                             dist2: dist2,
                             who: domain[i],
                             v1: vertices[j],
@@ -123,20 +124,30 @@ function vertexCollision(v1, v1End, domains) {  //= [map, body, [playerBody, pla
                     }
                 }
             }
-            results = simulation.checkLineIntersection(v1, v1End, vertices[0], vertices[len]);
-            if (results.onLine1 && results.onLine2) {
-                const dx = v1.x - results.x;
-                const dy = v1.y - results.y;
-                const dist2 = dx * dx + dy * dy;
-                if (dist2 < best.dist2) {
-                    best = {
-                        x: results.x,
-                        y: results.y,
-                        dist2: dist2,
-                        who: domain[i],
-                        v1: vertices[0],
-                        v2: vertices[len]
-                    };
+            const edgeX = vertices[len].x - vertices[0].x;
+            const edgeY = vertices[len].y - vertices[0].y;
+            const denominator = edgeY * rayX - edgeX * rayY;
+            if (denominator !== 0) {
+                const offsetY = v1.y - vertices[0].y;
+                const offsetX = v1.x - vertices[0].x;
+                const a = (edgeX * offsetY - edgeY * offsetX) / denominator;
+                const b = (rayX * offsetY - rayY * offsetX) / denominator;
+                if (a > 0 && a < 1 && b > 0 && b < 1) {
+                    const x = v1.x + a * rayX;
+                    const y = v1.y + a * rayY;
+                    const dx = v1.x - x;
+                    const dy = v1.y - y;
+                    const dist2 = dx * dx + dy * dy;
+                    if (dist2 >= minHitDistance2 && dist2 < best.dist2) {
+                        best = {
+                            x: x,
+                            y: y,
+                            dist2: dist2,
+                            who: domain[i],
+                            v1: vertices[0],
+                            v2: vertices[len]
+                        };
+                    }
                 }
             }
         }
@@ -148,15 +159,36 @@ function vertexCollision(v1, v1End, domains) {  //= [map, body, [playerBody, pla
 function beforeUnloadEventListener(event) {
     event.preventDefault();
     if (tech.isExitPrompt) {
-        tech.damage *= 1.25
+        m.damageDone *= 1.25
         // simulation.inGameConsole(`<strong class='color-d'>damage</strong> <span class='color-symbol'>*=</span> ${1.25}`)
-        simulation.inGameConsole(`<span class='color-var'>tech</span>.damage *= ${1.25} //beforeunload`);
+        simulation.inGameConsole(`<span class='color-var'>tech</span>.<strong class='color-d'>damage</strong> *= ${1.25} //beforeunload`);
         if (Math.random() < 0.25) {
             removeEventListener('beforeunload', beforeUnloadEventListener);
         }
     }
 }
 // addEventListener('beforeunload', beforeUnloadEventListener);
+
+
+// // 1. Fix for exiting the lock (Document level)
+// document.exitPointerLock = document.exitPointerLock ||
+//     document.mozExitPointerLock ||
+//     document.webkitExitPointerLock ||
+//     function () { return; };
+
+// // 2. Fix for requesting the lock (Element level)
+// if (typeof Element !== 'undefined') {
+//     Element.prototype.requestPointerLock = Element.prototype.requestPointerLock ||
+//         Element.prototype.mozRequestPointerLock ||
+//         Element.prototype.webkitRequestPointerLock ||
+//         function () { return; };
+// }
+
+// //block pointer lock on some systems
+// if (!('pointerLockElement' in document || 'webkitPointerLockElement' in document)) {
+//     console.log("pointer lock disabled");
+// }
+
 
 
 //collision groups
@@ -224,11 +256,20 @@ function getUrlVars() {
     });
     return vars;
 }
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
     const set = getUrlVars()
     if (Object.keys(set).length !== 0) {
         // build.populateGrid() //trying to solve a bug with this, but maybe it doesn't help
-        openExperimentMenu();
+        await openExperimentMenu();
+        //Restore custom options before applying the shared build.
+        if (/^(?:v2:[01]{13,14}|[01]{11,13})$/.test(set.difficultyOptions || '')) {
+            simulation.difficultyOptions = powerUps.difficulty.fromSignature(set.difficultyOptions);
+        } else if (set.difficulty !== undefined) {
+            simulation.difficultyOptions = powerUps.difficulty.fromLegacy(set.difficulty);
+        }
+        localSettings.difficultyOptions = { ...simulation.difficultyOptions };
+        powerUps.difficulty.updateScale();
+        powerUps.difficulty.setDamageAndDefense();
         //add experimental selections based on url
         for (const property in set) {
             set[property] = set[property].replace(/%20/g, " ")
@@ -266,25 +307,14 @@ window.addEventListener('load', () => {
                     }
                 }
             }
-
-            // if (property === "difficulty") {
-            //     simulation.difficultyMode = Number(set[property])
-            //     lore.setTechGoal()
-            //     document.getElementById("difficulty-select-experiment").value = Number(set[property])
-            // }
             if (property === "molMode") {
                 simulation.molecularMode = Number(set[property])
                 const i = 4 //update experiment text
                 m.fieldUpgrades[i].description = m.fieldUpgrades[i].setDescription()
                 document.getElementById(`field-${i}`).innerHTML = `<div class="card-text">
-                <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
+                <div class="grid-title"><div class="circle-grid-title field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
                 ${m.fieldUpgrades[i].description}</div>`
             }
-            // if (property === "seed") {
-            //     document.getElementById("seed").placeholder = Math.initialSeed = String(set[property])
-            //     Math.seed = Math.abs(Math.hash(Math.initialSeed))
-            //     level.populateLevels()
-            // }
             requestAnimationFrame(() => { build.sortTech('have', true) });
 
         }
@@ -318,7 +348,6 @@ const canvas = document.getElementById("canvas");
 //using "const" causes problems in safari when an ID shares the same name.
 const ctx = canvas.getContext("2d");
 // const ctx = canvas.getContext('2d', { alpha: false }); //optimization, this works if you wipe with the background color of each level
-
 document.body.style.backgroundColor = "#fff";
 
 //disable pop up menu on right click
@@ -332,6 +361,7 @@ function setupCanvas() {
     canvas.width2 = canvas.width / 2; //precalculated because I use this often (in mouse look)
     canvas.height2 = canvas.height / 2;
     ctx.font = "25px Arial";
+    ctx.textAlign = "center";
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     simulation.setZoom();
@@ -354,79 +384,6 @@ for (let i = 0, len = tech.tech.length; i < len; i++) {
     if (!tech.tech[i].link) tech.tech[i].link = `<a target="_blank" href='https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(tech.tech[i].name).replace(/'/g, '%27')}&title=Special:Search' class="link">${tech.tech[i].name}</a>`
 }
 const build = {
-    pixelDraw() {
-        let count = 0
-        let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let data = imgData.data;
-
-        function loop() {
-            count++
-            if (!(count % 2)) {
-                for (let y = 0; y < canvas.height; ++y) {
-                    for (let x = 0; x < canvas.width; x += 1) {
-                        const index = (y * canvas.width + x) * 4;
-                        // let mag = 0;
-                        //   for (let j = 0, len = who.length; j < len; j++) {
-                        //     const dx = who[j].position.x - x;
-                        //     const dy = who[j].position.y - y;
-                        //     mag -= who[j].charge / (Math.sqrt(dx * dx + dy * dy) + 1);
-                        //   }
-
-                        //get dark
-                        // data[index + 0] *= 0.96
-                        // data[index + 1] *= 0.96
-                        // data[index + 2] *= 0.96
-                        // data[index + 3] -= 1; // alpha
-
-                        //invert
-                        data[index + 0] = 255 - data[index + 0] // red
-                        data[index + 1] = 255 - data[index + 1] // green
-                        data[index + 2] = 255 - data[index + 2] // blue
-                    }
-                }
-
-                // fade alpha for all pixels
-                // for (let i = 0; i < data.length; i += 4) {
-                //     if (data[i + 3] > 0) {
-                //         data[i + 3]--;
-                //     }
-                // }
-
-                //add random speckles
-                // for (let i = 0, len = Math.floor(data.length / 15000); i < len; ++i) {
-                //     const index = Math.floor((Math.random() * data.length) / 4) * 4;
-                //     data[index + 0] = 255; // red
-                //     data[index + 1] = 255; // green
-                //     data[index + 2] = 255; // blue
-                //     data[index + 3] = Math.floor(Math.random() * Math.random() * 155); // alpha
-                // }
-
-                // ctx.putImageData(imgData, 0, 1); //pixels fall because of the 1 in third parameter
-                ctx.putImageData(imgData, 0, 0);
-            }
-            if (simulation.paused && m.alive) requestAnimationFrame(loop);
-        }
-        requestAnimationFrame(loop);
-    },
-    showImages(from) { //on click event:  from all 3 different places to hide / show images 
-        localSettings.isHideImages = !localSettings.isHideImages
-        if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
-        if (from === 'experiment') {
-            build.reset();
-        } else if (from === 'pause') {
-            build.unPauseGrid()
-            build.pauseGrid() //redraw pause text with images
-        }
-        if (localSettings.isHideImages) {
-            document.getElementById("choose-grid").classList.add('choose-grid-no-images');
-            document.getElementById("choose-grid").classList.remove('choose-grid');
-        } else {
-            document.getElementById("choose-grid").classList.add('choose-grid');
-            document.getElementById("choose-grid").classList.remove('choose-grid-no-images');
-        }
-        document.getElementById("hide-images").checked = localSettings.isHideImages
-        // console.log(localSettings.isHideImages, from)
-    },
     hideHUD() {
         if (simulation.isTraining) {
             localSettings.isHideHUD = false
@@ -436,7 +393,7 @@ const build = {
         if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
         document.getElementById("hide-hud").checked = localSettings.isHideHUD
         document.getElementById("hide-hud").classList.toggle("ticked")
-        simulation.removeEphemera("dmgDefBars")
+        simulation.removeEphemera("dmgDefBars", true)
         if (!localSettings.isHideHUD) {
             simulation.ephemera.push({
                 name: "dmgDefBars", count: 0, do() {
@@ -446,15 +403,20 @@ const build = {
                             document.getElementById("defense-bar").style.width = Math.floor(300 * m.maxHealth * (1 - defense)) + "px";
                             m.lastCalculatedDefense = defense
                         }
-                        const damage = tech.damageFromTech()             //update damage bar
+                        const damage = tech.damageAdjustments()             //update damage bar
                         if (m.lastCalculatedDamage !== damage) {
-                            document.getElementById("damage-bar").style.height = Math.floor((Math.atan(0.25 * damage - 0.25) + 0.25) * 0.53 * canvas.height) + "px";
                             m.lastCalculatedDamage = damage
                         }
                     }
                 },
             })
         }
+    },
+    showDmgNumbers() {
+        localSettings.showDmgNumbers = !localSettings.showDmgNumbers
+        if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+        document.getElementById("show-num").checked = localSettings.showDmgNumbers
+        document.getElementById("show-num").classList.toggle("ticked")
     },
     pauseGrid() {
         build.generatePauseLeft() //makes the left side of the pause menu with the tech
@@ -466,157 +428,187 @@ const build = {
         document.getElementById("health").style.display = "none"
         document.getElementById("health-bg").style.display = "none"
         document.getElementById("defense-bar").style.display = "none"
-        document.getElementById("damage-bar").style.display = "none"
         //show in game console
-        simulation.lastLogTime = m.cycle //hide in game console
+        simulation.lastLogTime = m.cycle
     },
     generatePauseLeft() {
         //left side
         let botText = ""
-        if (tech.nailBotCount) botText += `<br><strong class='color-bot no-box'>nail-bots ${tech.nailBotCount}</strong>`
-        if (tech.orbitBotCount) botText += `<br><strong class='color-bot no-box'>orbital-bots ${tech.orbitBotCount}</strong>`
-        if (tech.boomBotCount) botText += `<br><strong class='color-bot no-box'>boom-bots ${tech.boomBotCount}</strong>`
-        if (tech.laserBotCount) botText += `<br><strong class='color-bot no-box'>laser-bots ${tech.laserBotCount}</strong>`
-        if (tech.foamBotCount) botText += `<br><strong class='color-bot no-box'>foam-bots ${tech.foamBotCount}</strong>`
-        if (tech.soundBotCount) botText += `<br><strong class='color-bot no-box'>sound-bots ${tech.soundBotCount}</strong>`
-        if (tech.dynamoBotCount) botText += `<br><strong class='color-bot no-box'>dynamo-bots ${tech.dynamoBotCount}</strong>`
-        if (tech.plasmaBotCount) botText += `<br><strong class='color-bot no-box'>plasma-bots ${tech.plasmaBotCount}</strong>`
-        if (tech.missileBotCount) botText += `<br><strong class='color-bot no-box'>missile-bots ${tech.missileBotCount}</strong>`
+        if (tech.nailBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>nail-bots ${tech.nailBotCount}</strong>`
+        if (tech.orbitBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>orbital-bots ${tech.orbitBotCount}</strong>`
+        if (tech.boomBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>boom-bots ${tech.boomBotCount}</strong>`
+        if (tech.laserBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>laser-bots ${tech.laserBotCount}</strong>`
+        if (tech.foamBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>foam-bots ${tech.foamBotCount}</strong>`
+        if (tech.soundBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>sound-bots ${tech.soundBotCount}</strong>`
+        if (tech.dynamoBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>dynamo-bots ${tech.dynamoBotCount}</strong>`
+        if (tech.plasmaBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>plasma-bots ${tech.plasmaBotCount}</strong>`
+        if (tech.missileBotCount) botText += `<br><strong class='color-bot no-box' data-help='bot'>missile-bots ${tech.missileBotCount}</strong>`
 
         // <strong class='color-g'>${b.activeGun === null || b.activeGun === undefined ? "undefined" : b.guns[b.activeGun].name}</strong> (${b.activeGun === null || b.activeGun === undefined ? "0" : b.guns[b.activeGun].ammo})
 
-        // <br>
-        // <input onclick="build.showImages('pause')" type="checkbox" id="hide-images-pause" name="hide-images-pause" ${localSettings.isHideImages ? "checked" : ""}>
-        // <label for="hide-images-pause" title="hide images for fields, guns, and tech" style="font-size:1.15em;" >hide images</label>
+        let mobText
+        if (level.levelsCleared > 0 && level.levelsCleared < 13) {
+            mobText = `<br>${spawn.pickList[0]} (<strong class="color-tier">T${spawn.mobTierSpawnOrder[level.levelsCleared - 1]}</strong>), ${spawn.pickList[1]} (<strong class="color-tier">T${spawn.mobTierSpawnOrder[level.levelsCleared]}</strong>)<span style="float: right;">mobs ${mob.length}</span>`
+        } else {
+            mobText = ""
+        }
+        function cleanText(text) {
+            return text.replace('Key', '').replace('Digit', '')
+        }
+        let fullscreenWarning = document.fullscreenElement ? `<div><span style="font-size:1.25em;font-weight: 600; float: left;">FULLSCREEN</span> <em style="float: right;color:#ccc;">press ${cleanText(input.key.fullscreen)} or hold ESC to exit</em></div><br>` : ""
 
         let text = `<div class="pause-grid-module" style="padding: 8px;">
-<span style="font-size:1.4em;font-weight: 600; float: left;">PAUSED</span> 
+<span class="color-paused" data-help="pause" style="font-size:1.0em; float: left;">PAUSED</span> 
 <em style="float: right;color:#ccc;">press ${input.key.pause} to resume</em>
 <br>
+${fullscreenWarning}
 <button onclick="build.shareURL(false)" class='sort-button' style="font-size:1em;float: right;">copy build URL</button>
-<input onclick="build.hideHUD('settings')" type="checkbox" id="hide-hud" name="hide-hud" ${localSettings.isHideHUD ? "checked" : ""}>
-<label for="hide-hud" title="hide: tech, damage taken, damage, in game console" style="font-size:1.15em;">minimal HUD</label>
+<input onclick="build.hideHUD()" type="checkbox" id="hide-hud" name="hide-hud" ${localSettings.isHideHUD ? "checked" : ""}>
+<label for="hide-hud" title="hide: tech, damage taken, damage, in game console, final boss health bar, tech: filament, tech: pair production, duplication animation, eigen animation, lower max body caps, no stroke on blocks" style="font-size:1.15em;">performance mode</label>
+<br>
+<input onclick="build.showDmgNumbers()" type="checkbox" id="show-num" name="show-num" ${localSettings.showDmgNumbers ? "checked" : ""}>
+<label for="show-num" title="show in game combat text"  style="font-size:1.15em;">damage numbers</label>
+
 </div>
 
 <div class="pause-grid-module">
-<details id = "simulation-variables-details" style="padding: 0 8px;line-height: 140%;">
-<summary>simulation variables</summary>
-<div class="pause-details">
-<strong class='color-d'>damage</strong> ${((tech.damageFromTech())).toPrecision(4)}x
-<span style="float: right;"><strong class='color-d'>level</strong> ${((m.dmgScale)).toPrecision(4)}x</span>
-<br><strong class='color-defense'>damage taken</strong> ${(m.defense()).toPrecision(4)}x
-<span style="float: right;"><strong class='color-defense'>level</strong> ${(simulation.dmgScale).toPrecision(4)}x</span>
-<br><strong class='color-h'>health</strong> (${level.isHideHealth ? "null" : (m.health * 100).toFixed(0)} / ${(m.maxHealth * 100).toFixed(0)})
-<span style="float: right;">${powerUps.research.count} ${powerUps.orb.research()}</span>
-<br><strong class='color-f'>energy</strong> (${(m.energy * 100).toFixed(0)} / ${(m.maxEnergy * 100).toFixed(0)}) + (${(m.fieldRegen * 6000 * level.isReducedRegen).toFixed(0)}/s)
-<span style="float: right;">${tech.totalCount} ${powerUps.orb.tech()}</span>
-<br><strong><em>fire rate</em></strong> ${(1 / b.fireCDscale).toFixed(2)}x
-<span style="float: right;">mass ${player.mass.toFixed(1)}</span>
-${m.coupling ? `<br><span style = 'font-size:90%;'>` + m.couplingDescription(m.coupling) + `</span> from ${(m.coupling).toFixed(0)} ${powerUps.orb.coupling(1)}` : ""}
-<br><strong class='color-dup'>duplication</strong> ${(tech.duplicationChance() * 100).toFixed(0)}%
-<span style="float: right;"><strong class='color-junk'>JUNK</strong> ${(100 * (tech.junkChance + level.junkAdded)).toFixed(0)}%</span>
-${botText}
-<br>
-<br> ${level.levelAnnounce()}
-<span style="float: right;">position (${player.position.x.toFixed(0)}, ${player.position.y.toFixed(0)})</span>
-<br>seed ${Math.initialSeed}
-<span style="float: right;">mouse (${simulation.mouseInGame.x.toFixed(0)}, ${simulation.mouseInGame.y.toFixed(0)})</span>
-<br>cycles ${m.cycle}
-<span style="float: right;">velocity (${player.velocity.x.toFixed(2)}, ${player.velocity.y.toFixed(2)})</span>
-<br>mobs ${mob.length} (${spawn.pickList[0]},  ${spawn.pickList[1]})
-<span style="float: right;">blocks ${body.length}</span>
-<br>bullets ${bullet.length}
-<span style="float: right;">power ups ${powerUp.length}</span>
-
-${simulation.isCheating ? "<br><br><em>lore disabled</em>" : ""}
-</div>
-</details>
+    
+        <details id="pause-music-details" style="padding: 0 8px;line-height: 140%;">
+            <summary>music</summary>
+            <div class="pause-details" style="font-size: 100%;">
+                playlists
+                <br><a data-music-playlist="instrumental" href="https://music.youtube.com/watch?v=lDlU08RU7Tk&amp;list=PLea2HwrA4R0E" target="_blank" rel="noopener noreferrer">mostly instrumental</a> <span style="color:#aaa;">classical shoegaze</span>
+                <br><a data-music-playlist="old-stuff" href="https://music.youtube.com/watch?v=qumO-vBey2Q&amp;list=PLbjRnln-q160" target="_blank" rel="noopener noreferrer">old stuff</a> <span style="color:#aaa;">new wave indie motown</span>
+                <br>
+                <br>video game OST
+                <br><a data-music-playlist="hollow-knight" href="https://music.youtube.com/watch?v=NSlkW1fFkyo&amp;list=PLmOldskd2VbL7_t-NE9p6rEboq_v0AHko" target="_blank" rel="noopener noreferrer">Hollow Knight</a>
+                <a data-music-playlist="silksong" href="https://music.youtube.com/watch?v=yUfD7w5y3Ug&amp;list=PLbNT78Q7M14yC4iIN4RaQqGa6q6zY6bqc" target="_blank" rel="noopener noreferrer" style="float: right;">Silksong</a>
+                <br><a data-music-playlist="animal-well" href="https://music.youtube.com/watch?v=yccb86YuwXs&amp;list=PLS7HzNXh-PwozVLyFxG3a7-0HplJwKPY2" target="_blank" rel="noopener noreferrer">Animal Well</a>
+                <a data-music-playlist="disco-elysium" href="https://music.youtube.com/watch?v=qMUoWTEIGx4&amp;list=OLAK5uy_n_Y491JJMFBAxR3v_o5LLTgu20URfxpuw" target="_blank" rel="noopener noreferrer" style="float: right;">Disco Elysium</a>
+                <br><a data-music-playlist="undertale" href="https://music.youtube.com/watch?v=3BR7-AzE2dQ&amp;list=OLAK5uy_ljXkQlhVlWyV7BxSxMMzgOLbzYS_-JPt4" target="_blank" rel="noopener noreferrer">UNDERTALE</a>
+                <a data-music-playlist="deltarune" href="https://music.youtube.com/watch?v=XEdoMoV4D6k&amp;list=OLAK5uy_kidGzGmzCUSJK1LAtIh7ngZwRF9MT3qjE" target="_blank" rel="noopener noreferrer" style="float: right;">deltarune</a>
+                <br>
+                <br><label>service:
+                    <select class="music-service-select" data-music-service>
+                        <option value="youtube">YouTube</option>
+                        <option value="spotify">Spotify</option>
+                        <option value="apple">Apple Music</option>
+                    </select>
+                </label>
+            </div>
+        </details>
+    
+    <details id = "simulation-variables-details" style="padding: 0 8px;line-height: 140%;">
+    <summary>simulation variables</summary>
+        <div class="pause-details">
+            <strong class='color-d' data-help='damage'>damage</strong> ${((tech.damageAdjustments())).toPrecision(4)}x
+            <span style="float: right;">empty</span>
+            <br><strong class='color-defense' data-help='defense'>damage taken</strong> ${(m.defense()).toPrecision(4)}x
+            <span style="float: right;">empty</span>
+            <br><strong class='color-h' data-help='health'>health</strong> (${level.isHideHealth ? "null" : (m.health * 100).toFixed(0)} / ${(m.maxHealth * 100).toFixed(0)})
+            <span style="float: right;">${powerUps.research.count} ${powerUps.orb.research()}</span>
+            <br><strong class='energy' data-help='energy'>energy</strong> (${(m.energy * 100).toFixed(0)} / ${(m.maxEnergy * 100).toFixed(0)}) + (${(m.fieldRegen * 6000 * level.isReducedRegen).toFixed(0)}/s)
+            <span style="float: right;">${tech.totalCount} ${powerUps.orb.tech()}</span>
+            <br><strong><span class='color-fire-rate' data-help='fire-rate'>fire rate</span></strong> ${(1 / b.fireCDscale).toFixed(2)}x
+            <span style="float: right;">mass ${player.mass.toFixed(1)}</span>
+            ${m.coupling ? `<br><span style = 'font-size:90%;'>` + m.couplingDescription(m.coupling) + `</span> from ${(m.coupling).toFixed(0)} ${powerUps.orb.coupling(1)}` : ""}
+            <br><strong class='color-dup' data-help='duplicate'>duplication</strong> ${(tech.duplicationChance() * 100).toFixed(0)}%
+            <span style="float: right;"><strong class='color-junk' data-help='junk'>JUNK</strong> ${(100 * (tech.junkChance + level.junkAdded)).toFixed(0)}%</span>
+            ${botText}
+            <br>
+            <br> ${level.levelAnnounce()}
+            <span style="float: right;">position (${player.position.x.toFixed(0)}, ${player.position.y.toFixed(0)})</span>
+            <br>seed ${Math.initialSeed}
+            <span style="float: right;">mouse (${simulation.mouseInGame.x.toFixed(0)}, ${simulation.mouseInGame.y.toFixed(0)})</span>
+            <br>cycles ${m.cycle - 600}
+            <span style="float: right;">velocity (${player.velocity.x.toFixed(2)}, ${player.velocity.y.toFixed(2)})</span>
+            <br>bullets ${bullet.length}
+            <span style="float: right;">power ups ${powerUp.length}</span>
+            ${mobText}
+            ${simulation.isCheating ? "<br><br><em>lore disabled</em>" : ""}
+        </div>
+    </details>
 </div>`
+
         text += `<div class="pause-grid-module card-background" style="height:auto;">
 <details id="difficulty-parameters-details" style="padding: 0 8px;">
 <summary>difficulty parameters</summary>
 <div class="pause-details">
-        ${simulation.difficultyMode > 0 ? `<div class="pause-difficulty-row"><strong>0.85x</strong> <strong class='color-d'>damage</strong> per level<br><strong>1.25x</strong> <strong class='color-defense'>damage taken</strong> per level</div>` : " "}
-        ${simulation.difficultyMode > 1 ? `<div class="pause-difficulty-row">spawn <strong>more</strong> mobs<br>mobs move <strong>faster</strong></div>` : " "}
-        ${simulation.difficultyMode > 2 ? `<div class="pause-difficulty-row">spawn a <strong>2nd</strong> boss each level<br>bosses spawn <strong>0.5x</strong> power ups</div>` : " "}
-        ${simulation.difficultyMode > 3 ? `<div class="pause-difficulty-row"><strong>0.85x</strong> <strong class='color-d'>damage</strong> per level<br><strong>1.25x</strong> <strong class='color-defense'>damage taken</strong> per level</div>` : " "}
-        ${simulation.difficultyMode > 4 ? `<div class="pause-difficulty-row"><strong>+1</strong> random <strong class="constraint">constraint</strong> each level<br>fewer initial power ups</div>` : " "}
-        ${simulation.difficultyMode > 5 ? `<div class="pause-difficulty-row"><strong>0.5x</strong> initial <strong class='color-d'>damage</strong><br><strong>2x</strong> initial <strong class='color-defense'>damage taken</strong></div>` : " "}        
-        ${simulation.difficultyMode > 6 ? `<div class="pause-difficulty-row"><strong>+1</strong> random <strong class="constraint">constraint</strong> each level<br>fewer ${powerUps.orb.tech()} spawn</div>` : " "}        
+        ${powerUps.difficulty.pauseText()}
 </div>
 </details>
-${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padding: 0 8px;"><summary>active constraints</summary><div class="pause-details"><span class="constraint">${level.constraintDescription1}<br>${level.constraintDescription2}</span></div></details>` : ""}
+${simulation.difficultyOptions.isConstraint ? `<details id="constraints-details" style="padding: 0 8px;"><summary>active constraint</summary><div class="pause-details"><span class="constraint">${level.constraintDescription1}</span></div></details>` : ""}
 </div>`
-        if (!localSettings.isHideHUD) text += `<div class="pause-grid-module card-background" style="height:auto;">
+        text += `<div class="pause-grid-module card-background" style="height:auto;">
 <details id = "console-log-details" style="padding: 0 8px;">
 <summary>console log</summary>
 <div class="pause-details">
-    <div class="pause-grid-module" style="    background-color: #e2e9ec;font-size: 0.8em;">${document.getElementById("text-log").innerHTML}</div>
+    <div class="pause-grid-module" style="background-color: #e2e9ec;font-size: 0.85em; font-family: monospace;">${document.getElementById("text-log").innerHTML}</div>
 </div>
 </details>
 </div>`
-        if ((tech.isPauseSwitchField || simulation.testing)) {  //&& !simulation.isChoosing
-            // const fieldNameP = m.fieldUpgrades[m.fieldMode > 1 ? m.fieldMode - 1 : m.fieldUpgrades.length - 1].name
-            // const fieldNameN = m.fieldUpgrades[m.fieldMode === m.fieldUpgrades.length - 2 ? 1 : m.fieldMode + 1].name
-            //button above for previous
-            text += `<div class="pause-grid-module" id ="pause-field-previous" style="animation: fieldColorCycle 3s linear infinite alternate; border-top: 1px solid #000;border-bottom: 1px solid #000;">
-                           <div class="grid-title" style="text-align: center;">↑ <div class="circle-grid field"></div> ↑</div></div>`
-            //button for current
-            const style = localSettings.isHideImages ? `style="height:auto;"` : `style="background-image: url('img/field/${m.fieldUpgrades[m.fieldMode].name}${m.fieldMode === 0 ? m.fieldUpgrades[0].imageNumber : ""}.webp');"`
-            text += `<div class="pause-grid-module card-background" id="pause-field" ${style} >
-                                                    <div class="card-text">
-                                                        <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[m.fieldMode].name)}</div>
-                                                        ${m.fieldUpgrades[m.fieldMode].description}</div> </div>`
-            //button below for next
-            text += `<div class="pause-grid-module" id="pause-field-next" style="animation: fieldColorCycle 3s linear infinite alternate;border-bottom: 1px solid #000;">
-                                                    <div class="grid-title" style="text-align: center;">↓ <div class="circle-grid field"></div> ↓</div></div>`
-
-
-        } else {
-            const style = localSettings.isHideImages ? `style="height:auto;"` : `style="background-image: url('img/field/${m.fieldUpgrades[m.fieldMode].name}${m.fieldMode === 0 ? m.fieldUpgrades[0].imageNumber : ""}.webp');"`
-            text += `<div class="pause-grid-module card-background" id="pause-field" ${style} >
-                                                    <div class="card-text">
-                                                        <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[m.fieldMode].name)}</div>
-                                                        ${m.fieldUpgrades[m.fieldMode].description}</div> </div>`
-        }
-        // for (let i = 0, len = b.inventory.length; i < len; i++) {
-        //     text += `<div class="pause-grid-module"><div class="grid-title"><div class="circle-grid gun"></div> &nbsp; ${build.nameLink(b.guns[b.inventory[i]].name)} - <span style="font-size:100%;font-weight: 100;">${b.guns[b.inventory[i]].ammo}</span></div> ${b.guns[b.inventory[i]].description}</div>`
+        const style = `style="height:auto;"`
+        text += `<div class="pause-grid-module card-background" id="pause-field" ${style}>
+<div class="card-text">
+<div class="grid-title"><div class="circle-grid-title field" onclick="speechHandler.speech('${m.fieldUpgrades[m.fieldMode].name}')"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[m.fieldMode].name)}</div>
+${m.fieldUpgrades[m.fieldMode].description}</div> </div>`
         // }
         for (let i = 0, len = b.inventory.length; i < len; i++) {
-            const style = localSettings.isHideImages ? `style="height:auto;"` : `style="background-image: url('img/gun/${b.guns[b.inventory[i]].name}.webp');"`
+            const style = `style="height:auto;"`
+            //onclick="speechHandler.speech('${tech.tech[i].name}')"
             text += `<div class="pause-grid-module card-background" ${style} >
-                                                    <div class="card-text">
-                                                        <div class="grid-title"><div class="circle-grid gun"></div> &nbsp; ${build.nameLink(b.guns[b.inventory[i]].name)} - <span style="font-size:100%;font-weight: 100;">${b.guns[b.inventory[i]].ammo}</span></div>
-                                                        ${b.guns[b.inventory[i]].descriptionFunction()}</div> </div>`
+<div class="card-text">
+<div class="grid-title"><div class="circle-grid-title gun" onclick="speechHandler.speech('${b.guns[b.inventory[i]].name}')"></div> &nbsp; ${build.nameLink(b.guns[b.inventory[i]].name)} - <span style="font-size:100%;font-weight: 100;">${b.guns[b.inventory[i]].ammo}</span></div>
+${b.guns[b.inventory[i]].descriptionFunction()}</div> </div>`
         }
         let el = document.getElementById("pause-grid-left")
         el.style.display = "grid"
         el.innerHTML = text
+        updateMusicLinks()
         requestAnimationFrame(() => {
             if (localSettings.isAllowed) {
                 document.getElementById("simulation-variables-details").open = localSettings.pauseMenuDetailsOpen[0]
                 document.getElementById("difficulty-parameters-details").open = localSettings.pauseMenuDetailsOpen[1]
                 document.getElementById("console-log-details").open = localSettings.pauseMenuDetailsOpen[2]
                 if (document.getElementById("constraints-details")) document.getElementById("constraints-details").open = localSettings.pauseMenuDetailsOpen[3]
+                document.getElementById("pause-music-details").open = localSettings.pauseMenuDetailsOpen[4]
             }
         });
     },
     generatePauseRight() {
+        //sort input tech to top
+        // tech.tech.sort((a, b) => {
+        //     // This moves 'true' to the front and 'false' to the back
+        //     return Number(b.isInput) - Number(a.isInput);
+        // });
+
+
         let text = `<div class="sort">
+        <button onclick="build.sortTech('PAUSE')" class='color-paused' data-help='pause' style="border: 1px #333 solid;border-radius: 0.3em;font-size: 0.5em;">PAUSE</button>
     <button onclick="build.sortTech('guntech')" class='sort-button'>${powerUps.orb.gunTech()}</button>
     <button onclick="build.sortTech('fieldtech')" class='sort-button'>${powerUps.orb.fieldTech()}</button>
-    <button onclick="build.sortTech('damage')" class='sort-button'><strong class='color-d'>damage</strong></button>
-    <button onclick="build.sortTech('damage taken')" class='sort-button'><strong style="letter-spacing: 1px;font-weight: 100;">dmg taken</strong></button>
-    <button onclick="build.sortTech('heal')" class='sort-button'><strong class='color-h'>heal</strong></button>
-    <button onclick="build.sortTech('energy')" class='sort-button'><strong class='color-f'>energy</strong></button>
-    <input type="search" id="sort-input" style="width: 8em;font-size: 0.6em;color:#000;" placeholder="sort by" />
-    <button onclick="build.sortTech('input')" class='sort-button' style="border-radius: 0em;border: 1.5px #000 solid;font-size: 0.6em;" value="damage">sort</button>
+    <button onclick="build.sortTech('damage')" class='sort-button'><strong class='color-d' data-help='damage'>dmg</strong></button>
+    <button onclick="build.sortTech('damage taken')" class='sort-button'><strong data-help='defense' style="font-weight: 100;">dmg</strong></button>
+    <button onclick="build.sortTech('energy')" class='sort-button'><strong class='energy' data-help='energy'>nrg</strong></button>
+    <button onclick="build.sortTech('heal')" class='sort-button'><strong class='color-h' data-help='health'>heal</strong></button>
+    <button onclick="build.sortTech('bot')" class='sort-button color-bot' data-help='bot' style="border-radius: 0px;">bot</button>
+    <button onclick="build.sortTech('duplic')" class='sort-button'><strong class='color-dup' data-help='duplicate'>dup</strong></button>
 </div>`;
-        const ejectClass = (tech.isPauseEjectTech && !simulation.isChoosing) ? 'pause-eject' : ''
+        // <input type="search" id="sort-input" style="width: 8em;font-size: 0.6em;color:#000;" placeholder="sort by" />
+        // <button onclick="build.sortTech('input')" class='sort-button' style="border-radius: 0em;border: 1.5px #000 solid;font-size: 0.6em;" value="damage">sort</button>
+        // tech.tech.sort((a, b) => {
+        //     if (a.isInput && b.isInput) {
+        //         return (a.allowed() === b.allowed()) ? 0 : a.allowed() ? -1 : 1;
+        //     }
+        //     if (a.isInput && !b.isInput) return -1; //sort to the top
+        //     if (!a.isInput && b.isInput) return 1; //sort to the bottom
+        //     return 0;
+        // });
         for (let i = 0, len = tech.tech.length; i < len; i++) {
             if (tech.tech[i].count > 0) {
-                const style = (localSettings.isHideImages || tech.tech[i].isJunk || tech.tech[i].isLore) ? `style="height:auto;"` : `style = "background-image: url('img/${tech.tech[i].name}.webp');"`
-                const techCountText = tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : "";
+                const ejectClass = (tech.isPauseEjectTech && !simulation.isChoosing && m.immuneCycle < m.cycle) ? 'pause-eject' : '' //&& !tech.tech[i].isInput
+                const style = `style="height:auto;"`
+                // const techCountText = tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : "";
                 if (tech.tech[i].isInstant) {
                     // text += `<div class="pause-grid-module" id ="${i}-pause-tech"  style = "border: 0px; opacity:0.5; font-size: 60%; line-height: 130%; margin: 1px; padding: 6px;"><div class="grid-title">${tech.tech[i].link} ${techCountText}</div>${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div></div>`
                 } else if (tech.tech[i].isFieldTech) {
@@ -628,6 +620,9 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
                 } else if (tech.tech[i].isSkin) {
                     text += `<div id="${i}-pause-tech" class="pause-grid-module card-background ${ejectClass}" onclick="powerUps.pauseEjectTech(${i})" ${style}>`
                     text += build.skinTechText(i) + "</div>"
+                } else if (tech.tech[i].isSkinUpgrade) {
+                    text += `<div id="${i}-pause-tech" class="pause-grid-module card-background ${ejectClass}" onclick="powerUps.pauseEjectTech(${i})" ${style}>`
+                    text += build.skinTechUpgradeText(i) + "</div>"
                 } else if (tech.tech[i].isJunk) {
                     text += `<div id="${i}-pause-tech" class="pause-grid-module card-background ${ejectClass}" onclick="powerUps.pauseEjectTech(${i})" ${style}>`
                     text += build.junkTechText(i) + "</div>"
@@ -644,14 +639,14 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
         el.innerHTML = text
 
         //add event listener for pressing enter key when in sort
-        function pressEnterSort(event) {
-            if (event.key === 'Enter') {
-                requestAnimationFrame(() => { document.getElementById("sort-input").focus(); });
-                // event.preventDefault(); // Prevent the default action to avoid form submission or any other default action
-                build.sortTech('input')
-            }
-        }
-        document.getElementById("sort-input").addEventListener('keydown', pressEnterSort);
+        // function pressEnterSort(event) {
+        //     if (event.key === 'Enter') {
+        //         requestAnimationFrame(() => { document.getElementById("sort-input").focus(); });
+        //         // event.preventDefault(); // Prevent the default action to avoid form submission or any other default action
+        //         build.sortTech('input')
+        //     }
+        // }
+        // document.getElementById("sort-input").addEventListener('keydown', pressEnterSort);
         // requestAnimationFrame(() => { document.getElementById("sort-input").focus(); });
     },
     sortTech(find, isExperiment = false) {
@@ -662,7 +657,6 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
             if (!aHasKeyword && bHasKeyword) return 1;
             return 0;
         }
-
         // if (find === '') {
         //     tech.tech.sort((a, b) => { //sorts tech into the order the player got them using tech.tech[i].cycle = m.cycle
         //         console.log(a.cycle, b.cycle)
@@ -702,7 +696,6 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
         } else if (find === 'have') {
             tech.tech.sort((a, b) => {
                 return (a.allowed() === b.allowed()) ? 0 : a.allowed() ? -1 : 1;
-                return 0;
             });
         } else if (find === 'heal') {
             tech.tech.sort((a, b) => {
@@ -722,21 +715,21 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
                 if (!a.isBotTech && b.isBotTech) return 1; //sort to the bottom
                 return 0;
             });
-        } else if (document.getElementById("sort-input").value === 'skin') {
-            tech.tech.sort((a, b) => {
-                if (a.isSkin && b.isSkin) {
-                    return (a.allowed() === b.allowed()) ? 0 : a.allowed() ? -1 : 1;
-                }
-                if (a.isSkin && !b.isSkin) return -1; //sort to the top
-                if (!a.isSkin && b.isSkin) return 1; //sort to the bottom
-                return 0;
-            });
-        } else if (document.getElementById("sort-input").value === 'junk') {
-            tech.tech.sort((a, b) => {
-                if (a.isJunk && !b.isJunk) return -1; //sort to the top
-                if (!a.isJunk && b.isJunk) return 1; //sort to the bottom
-                return 0;
-            });
+            // } else if (document.getElementById("sort-input").value === 'skin') {
+            //     tech.tech.sort((a, b) => {
+            //         if (a.isSkin && b.isSkin) {
+            //             return (a.allowed() === b.allowed()) ? 0 : a.allowed() ? -1 : 1;
+            //         }
+            //         if (a.isSkin && !b.isSkin) return -1; //sort to the top
+            //         if (!a.isSkin && b.isSkin) return 1; //sort to the bottom
+            //         return 0;
+            //     });
+            // } else if (document.getElementById("sort-input").value === 'junk') {
+            //     tech.tech.sort((a, b) => {
+            //         if (a.isJunk && !b.isJunk) return -1; //sort to the top
+            //         if (!a.isJunk && b.isJunk) return 1; //sort to the bottom
+            //         return 0;
+            //     });
         } else if (find === 'damage') {
             tech.tech.sort(sortKeyword);
         } else if (find === 'damage taken') {
@@ -745,8 +738,9 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
             tech.tech.sort(sortKeyword);
         } else if (find === 'energy') {
             tech.tech.sort(sortKeyword);
-        } else if (find === 'input') {
-            find = document.getElementById("sort-input").value.toLowerCase();
+        } else if (find === 'duplic') {
+            tech.tech.sort(sortKeyword);
+        } else if (find === 'PAUSE') {
             tech.tech.sort(sortKeyword);
         }
         if (isExperiment) {
@@ -756,7 +750,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
         } else {
             build.generatePauseRight() //makes the right side of the pause menu with the tech            
         }
-        document.getElementById("sort-input").value = find; //make the sorted string display in the keyword search input field
+        if (isExperiment) document.getElementById("sort-input").value = find; //make the sorted string display in the keyword search input field
         simulation.updateTechHUD();
     },
     unPauseGrid() {
@@ -766,6 +760,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
             if (document.getElementById("difficulty-parameters-details")) localSettings.pauseMenuDetailsOpen[1] = document.getElementById("difficulty-parameters-details").open
             if (document.getElementById("console-log-details")) localSettings.pauseMenuDetailsOpen[2] = document.getElementById("console-log-details").open
             if (document.getElementById("constraints-details")) localSettings.pauseMenuDetailsOpen[3] = document.getElementById("constraints-details").open
+            if (document.getElementById("pause-music-details")) localSettings.pauseMenuDetailsOpen[4] = document.getElementById("pause-music-details").open
             localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
         }
 
@@ -781,9 +776,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
         if (!localSettings.isHideHUD) {
             document.getElementById("right-HUD").style.display = "inline"
             document.getElementById("defense-bar").style.display = "inline"
-            document.getElementById("damage-bar").style.display = "inline"
         }
-        // document.body.style.overflow = "hidden"
         document.getElementById("pause-grid-left").style.display = "none"
         document.getElementById("pause-grid-right").style.display = "none"
         document.getElementById("pause-grid-right").style.opacity = "1"
@@ -793,44 +786,65 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
     isExperimentSelection: false,
     isExperimentRun: false,
     techText(i) {
-        return `<div class="card-text" >
-                                <div class="grid-title" ><div class="circle-grid tech"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+        return `<div class="card-text">
+                <div class="grid-title" ><div class="circle-grid-title tech" onclick="speechHandler.speech('${tech.tech[i].name}')"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     instantTechText(i) {
         // 
-        return `<div class="card-text" >
-                                <div class="grid-title" > <div class="circle-grid-instant"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+        return `<div class="card-text">
+                <div class="grid-title" > <div class="circle-grid-instant" onclick="speechHandler.speech('${tech.tech[i].name}')"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     skinTechText(i) {
         return `<div class="card-text"> <div class="grid-title">
-                                <span style="position:relative;">
-                                    <div class="circle-grid-skin"></div>
-                                    <div class="circle-grid-skin-eye"></div>
-                                </span> &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+                <span style="position:relative;" onclick="speechHandler.speech('${tech.tech[i].name}')">
+                    <div class="circle-grid-skin"></div>
+                    <div class="circle-grid-skin-eye"></div>
+                </span> &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+    },
+    // skinTechUpgradeText(i) {
+    //     return `<div class="card-text"> <div class="grid-title">
+    //             <span style="position:relative;" onclick="speechHandler.speech('${tech.tech[i].name}')">
+    //                 <div class="circle-grid-skin tech" style="opacity:0.5;"></div>
+    //                 <div class="circle-grid-skin-eye"></div>
+    //             </span> &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+    //             ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+    // },
+    skinTechUpgradeText(i) {
+        return `<div class="card-text"> <div class="grid-title">
+                <span style="position:relative;">
+                    <div class="circle-grid-title" style="position:absolute; top:0.18em; left:0.56em;opacity:1;">
+                        <span style="position:relative;">
+                            <div class="circle-grid-skin"></div>
+                            <div class="circle-grid-skin-eye"></div>
+                        </span>
+                    </div>
+                    <div class="circle-grid-title tech" style="position:absolute; top:0.12em; left:-0.1em;opacity:0.93;"></div>
+                </span> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     gunTechText(i) {
         return `<div class="card-text"> <div class="grid-title">
-                                <span style="position:relative;">
-                                    <div class="circle-grid tech" style="position:absolute; top:0; left:0;opacity:0.8;"></div>
-                                    <div class="circle-grid gun" style="position:absolute; top:0; left:10px; opacity:0.65;"></div>
-                                </span> &nbsp; &nbsp; &nbsp; &nbsp;  &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+                <span style="position:relative;" onclick="speechHandler.speech('${tech.tech[i].name}')">
+                    <div class="circle-grid-title tech" style="position:absolute; top:0.12em; left:0;opacity:0.8;"></div>
+                    <div class="circle-grid-title gun" style="position:absolute; top:0.12em; left:0.55em; opacity:0.65;"></div>
+                </span> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     fieldTechText(i) {
         return `<div class="card-text"><div class="grid-title">
-                                <span style="position:relative;">
-                                    <div class="circle-grid tech" style="position:absolute; top:0; left:0;opacity:0.8;"></div>
-                                    <div class="circle-grid field" style="position:absolute; top:0; left:10px;opacity:0.65;"></div>
-                                </span> &nbsp; &nbsp; &nbsp; &nbsp;  &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+                <span style="position:relative;" onclick="speechHandler.speech('${tech.tech[i].name}')">
+                    <div class="circle-grid-title tech" style="position:absolute; top:0.12em; left:0;opacity:0.8;"></div>
+                    <div class="circle-grid-title field" style="position:absolute; top:0.12em; left:0.55em;opacity:0.65;"></div>
+                </span> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     junkTechText(i) {
         return `<div class="card-text">
-                                <div class="grid-title"><div class="circle-grid junk"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
-                                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
+                <div class="grid-title"><div class="circle-grid-title junk" onclick="speechHandler.speech('${tech.tech[i].name}')"></div> &nbsp; ${build.nameLink(tech.tech[i].name)} ${tech.tech[i].count > 1 ? `(${tech.tech[i].count}x)` : ""}</div>
+                ${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
     },
     choosePowerUp(index, type, isAllowed = false) {
         if (type === "gun") {
@@ -854,6 +868,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
             }
             if (!isDeselect) { //add gun
                 document.getElementById("gun-" + index).classList.add("build-gun-selected");
+                if (tech.isOneGun && b.inventory.length > 0) tech.removeTech("integrated armament", false)
                 b.giveGuns(index)
             }
         } else if (type === "field") {
@@ -867,10 +882,8 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
                 simulation.molecularMode++
                 if (simulation.molecularMode > i - 1) simulation.molecularMode = 0
                 m.fieldUpgrades[i].description = m.fieldUpgrades[i].setDescription()
-                // document.getElementById(`field-${i}`).innerHTML = `<div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div> ${m.fieldUpgrades[i].description}`
-
                 document.getElementById(`field-${i}`).innerHTML = `<div class="card-text">
-                                <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
+                                <div class="grid-title"><div class="circle-grid-title field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
                                 ${m.fieldUpgrades[i].description}</div>`
             }
         } else if (type === "tech") {
@@ -903,10 +916,12 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
                         techID.innerHTML = build.gunTechText(i)
                     } else if (tech.tech[i].isJunk) {
                         techID.innerHTML = build.junkTechText(i)
-                        // `<div class="grid-title"><div class="circle-grid junk"></div> &nbsp; ${tech.tech[i].link} ${techCountText}</div>${tech.tech[i].descriptionFunction ? tech.tech[i].descriptionFunction() : tech.tech[i].description}</div>`
                     } else if (tech.tech[i].isSkin) {
                         techID.classList.remove('experiment-grid-hide');
                         techID.innerHTML = build.skinTechText(i)
+                    } else if (tech.tech[i].isSkinUpgrade) {
+                        techID.classList.remove('experiment-grid-hide');
+                        techID.innerHTML = build.skinTechUpgradeText(i)
                     } else if (tech.tech[i].isInstant) {
                         techID.innerHTML = build.instantTechText(i)
                     } else {
@@ -934,6 +949,8 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
                         techID.innerHTML = build.junkTechText(i)
                     } else if (tech.tech[i].isSkin) {
                         techID.innerHTML = build.skinTechText(i)
+                    } else if (tech.tech[i].isSkinUpgrade) {
+                        techID.innerHTML = build.skinTechUpgradeText(i)
                     } else if (tech.tech[i].isInstant) {
                         techID.innerHTML = build.instantTechText(i)
                     } else {
@@ -943,30 +960,21 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
             }
         }
     },
-    //     <div>
-    // <select name="difficulty-select" id="difficulty-select-experiment">
-    // <option value="1">easy</option>
-    // <option value="2" selected>normal ⚆</option>
-    // <option value="4">hard ⚆</option>
-    // <option value="5">why ⚇</option>
-    // </select>
-    // &nbsp; &nbsp;
-    //     <label for="hide-images-experiment" title="reload experiment with no images for fields, guns, and tech" style="font-size: 0.85em;">hide images</label>
-    //     <input onclick="build.showImages('experiment')" type="checkbox" id="hide-images-experiment" name="hide-images-experiment" style="width:13px; height:13px;" ${localSettings.isHideImages ? "checked" : ""}>
-    // </div>
 
-    // <button onclick="build.sortTech('allowed', true)" class='sort-button' style="letter-spacing: 1px;font-weight: 400;">allowed</button>
-    // <button onclick="build.sortTech('have', true)" class='sort-button color-m' style="letter-spacing: 1px;font-weight: 800;">have</button>
     populateGrid() { //background-color:var(--build-bg-color);
         let text = `
 <div class="experiment-start-box">
     <div class="sort" style="border: 0px;">
+    <button onclick="build.sortTech('PAUSE', true)" class='color-paused' data-help='pause' style="border: 1px #333 solid;border-radius: 0.3em;font-size: 0.5em;">PAUSE</button>
         <button onclick="build.sortTech('guntech', true)" class='sort-button'>${powerUps.orb.gunTech()}</button>
         <button onclick="build.sortTech('fieldtech', true)" class='sort-button'>${powerUps.orb.fieldTech()}</button>
-        <button onclick="build.sortTech('damage', true)" class='sort-button'><strong class='color-d'>damage</strong></button>
-        <button onclick="build.sortTech('damage taken', true)" class='sort-button'><strong style="letter-spacing: 1px;font-weight: 100;">dmg taken</strong></button>
-        <button onclick="build.sortTech('heal', true)" class='sort-button'><strong class='color-h'>heal</strong></button>
-        <button onclick="build.sortTech('energy', true)" class='sort-button'><strong class='color-f'>energy</strong></button>
+        <button onclick="build.sortTech('damage', true)" class='sort-button'><strong class='color-d' data-help='damage'>dmg</strong></button>
+        <button onclick="build.sortTech('damage taken', true)" class='sort-button'><strong data-help='defense' style="font-weight: 100;">dmg</strong></button>
+        <button onclick="build.sortTech('energy', true)" class='sort-button'><strong class='energy' data-help='energy'>energy</strong></button>
+        <button onclick="build.sortTech('heal', true)" class='sort-button'><strong class='color-h' data-help='health'>heal</strong></button>
+        <button onclick="build.sortTech('bot', true)" class='sort-button color-bot' data-help='bot' style="border-radius: 0px;">bot</button>
+        <button onclick="build.sortTech('duplic', true)" class='sort-button'><strong class='color-dup' data-help='duplicate'>dup</strong></button>
+
         <input type="search" id="sort-input" style="width: 7.5em;font-size: 0.6em;color:#000;" placeholder="sort by" />
         <button onclick="build.sortTech('input', true)" class='sort-button' style="border-radius: 0em;border: 1.5px #000 solid;font-size: 0.6em;" value="damage">sort</button>
     </div>
@@ -998,34 +1006,32 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
 </div>`
         const hideStyle = `style="height:auto; border: none; background-color: transparent;"`
         for (let i = 0, len = m.fieldUpgrades.length; i < len; i++) {
-            const style = localSettings.isHideImages ? hideStyle : `style="background-image: url('img/field/${m.fieldUpgrades[i].name}${i === 0 ? m.fieldUpgrades[0].imageNumber : ""}.webp');"`
-            text += `<div id="field-${i}" class="experiment-grid-module card-background ${m.fieldMode === i ? " build-field-selected" : ""}" onclick="build.choosePowerUp(${i},'field')" ${style} >
+            text += `<div id="field-${i}" class="experiment-grid-module card-background ${m.fieldMode === i ? " build-field-selected" : ""}" onclick="build.choosePowerUp(${i},'field');" ${hideStyle} >
                             <div class="card-text">
-                                <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
+                                <div class="grid-title"><div class="circle-grid-title field" onclick="speechHandler.speech('${m.fieldUpgrades[i].name}')"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[i].name)}</div>
                                 ${m.fieldUpgrades[i].description}</div> </div>`
         }
         for (let i = 0, len = b.guns.length; i < len; i++) {
-            const style = localSettings.isHideImages ? hideStyle : `style="background-image: url('img/gun/${b.guns[i].name}.webp');"`
-            text += `<div id="gun-${i}" class="experiment-grid-module card-background ${b.guns[i].have ? " build-gun-selected" : ""}" onclick="build.choosePowerUp(${i},'gun')" ${style} >
+            text += `<div id="gun-${i}" class="experiment-grid-module card-background ${b.guns[i].have ? " build-gun-selected" : ""}" onclick="build.choosePowerUp(${i},'gun')" ${hideStyle} >
                         <div class="card-text">
-                            <div class="grid-title"><div class="circle-grid gun"></div> &nbsp; ${build.nameLink(b.guns[i].name)}</div>
+                            <div class="grid-title"><div class="circle-grid-title gun" onclick="speechHandler.speech('${b.guns[i].name}')"></div> &nbsp; ${build.nameLink(b.guns[i].name)}</div>
                             ${b.guns[i].descriptionFunction()}</div> </div>`
         }
         for (let i = 0, len = tech.tech.length; i < len; i++) {
             if ((!tech.tech[i].isJunk || localSettings.isJunkExperiment) && !tech.tech[i].isLore) {
-                const style = (localSettings.isHideImages || tech.tech[i].isJunk) ? hideStyle : `style="background-image: url('img/${tech.tech[i].name}.webp');"`
                 if ((tech.tech[i].allowed() || tech.tech[i].count > 0) && (!tech.tech[i].isInstant || localSettings.isJunkExperiment)) { // || tech.tech[i].name === "+1 cardinality") { //|| tech.tech[i].name === "leveraged investment"
-                    text += `<div id="tech-${i}" class="experiment-grid-module card-background ${tech.tech[i].count ? "build-tech-selected" : ""}" onclick="build.choosePowerUp(${i},'tech')" ${style}>`
+                    text += `<div id="tech-${i}" class="experiment-grid-module card-background ${tech.tech[i].count ? "build-tech-selected" : ""}" onclick="build.choosePowerUp(${i},'tech')" ${hideStyle}>`
                 } else { //disabled
-                    text += `<div id="tech-${i}" class="experiment-grid-module card-background experiment-grid-disabled" ${style}>`
+                    text += `<div id="tech-${i}" class="experiment-grid-module card-background experiment-grid-disabled" ${hideStyle}>`
                 }
-
                 if (tech.tech[i].isFieldTech) {
                     text += build.fieldTechText(i)
                 } else if (tech.tech[i].isGunTech) {
                     text += build.gunTechText(i)
                 } else if (tech.tech[i].isSkin) {
                     text += build.skinTechText(i)
+                } else if (tech.tech[i].isSkinUpgrade) {
+                    text += build.skinTechUpgradeText(i)
                 } else if (tech.tech[i].isJunk) {
                     text += build.junkTechText(i)
                 } else if (tech.tech[i].isInstant) {
@@ -1061,13 +1067,14 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
     nameLink(text) { //converts text into a clickable wikipedia search
         return `<a target="_blank" href='https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(text).replace(/' /g, '%27')}&title=Special:Search' class="link">${text}</a>`
     },
-    reset() {
+    async reset() {
         build.isExperimentSelection = true;
         build.isExperimentRun = true;
-        simulation.startGame(true); //starts game, but pauses it
+        await simulation.startGame(true); //starts game, but pauses it
         build.isExperimentSelection = true;
         build.isExperimentRun = true;
         simulation.paused = true;
+        powerUps.totalUsed = 0
         b.inventory = []; //removes guns and ammo
         for (let i = 0, len = b.guns.length; i < len; ++i) {
             b.guns[i].count = 0;
@@ -1109,7 +1116,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
         // }
 
         url += `&field=${encodeURIComponent(m.fieldUpgrades[m.fieldMode].name.trim())}`
-        url += `&difficulty=${simulation.difficultyMode}`
+        url += `&difficultyOptions=${powerUps.difficulty.signature()}`
         if (isCustom) {
             // url += `&level=${Math.abs(Number(document.getElementById("starting-level").value))}`
             // alert('n-gon build URL copied to clipboard.\nPaste into browser address bar.')
@@ -1139,7 +1146,6 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
     hasExperimentalMode: false,
     startExperiment() { //start playing the game after exiting the experiment menu
         build.isExperimentSelection = false;
-        spawn.setSpawnList(); //gives random mobs,  not starter mobs
         if (b.inventory.length > 0) {
             b.activeGun = b.inventory[0] //set first gun to active gun
             b.inventoryGun = 0;
@@ -1175,7 +1181,7 @@ ${simulation.difficultyMode > 4 ? `<details id="constraints-details" style="padd
     }
 }
 
-function openExperimentMenu() {
+async function openExperimentMenu() {
     document.getElementById("experiment-button").style.display = "none";
     document.getElementById("training-button").style.display = "none";
     document.getElementById("start-button").style.display = "none";
@@ -1184,12 +1190,12 @@ function openExperimentMenu() {
     document.body.style.overflowY = "scroll";
     document.body.style.overflowX = "hidden";
     document.getElementById("info").style.display = 'none'
-    build.reset();
+    await build.reset();
 
 }
 
 //record settings so they can be reproduced in the experimental menu
-document.getElementById("experiment-button").addEventListener("click", () => { //setup build run
+document.getElementById("experiment-button").addEventListener("click", async () => { //setup build run
     // let field = 0;
     // let inventory = [];
     // let techList = [];
@@ -1200,7 +1206,7 @@ document.getElementById("experiment-button").addEventListener("click", () => { /
     //         techList.push(tech.tech[i].count)
     //     }
     // }
-    openExperimentMenu();
+    await openExperimentMenu();
 });
 
 
@@ -1217,6 +1223,15 @@ const input = {
     isPauseKeyReady: true,
     // isMouseInside: true,
     // lastDown: null,
+    reset() {
+        input.fire = false
+        input.field = false
+        input.up = false
+        input.down = false
+        input.left = false
+        input.fire = false
+        input.right = false
+    },
     key: {
         fire: "KeyF",
         field: "Space",
@@ -1225,6 +1240,7 @@ const input = {
         left: "KeyA",
         right: "KeyD",
         pause: "KeyP",
+        fullscreen: "KeyO",
         nextGun: "KeyE",
         previousGun: "KeyQ",
         testing: "KeyT"
@@ -1238,6 +1254,7 @@ const input = {
             left: "KeyA",
             right: "KeyD",
             pause: "KeyP",
+            fullscreen: "KeyO",
             nextGun: "KeyE",
             previousGun: "KeyQ",
             testing: "KeyT"
@@ -1256,6 +1273,7 @@ const input = {
         document.getElementById("key-left").innerHTML = cleanText(input.key.left)
         document.getElementById("key-right").innerHTML = cleanText(input.key.right)
         document.getElementById("key-pause").innerHTML = cleanText(input.key.pause)
+        document.getElementById("key-fullscreen").innerHTML = cleanText(input.key.fullscreen)
         document.getElementById("key-next-gun").innerHTML = cleanText(input.key.nextGun)
         document.getElementById("key-previous-gun").innerHTML = cleanText(input.key.previousGun)
         document.getElementById("key-testing").innerHTML = cleanText(input.key.testing) //if (localSettings.loreCount > 0)
@@ -1264,6 +1282,8 @@ const input = {
         document.getElementById("splash-down").innerHTML = cleanText(input.key.down)[0]
         document.getElementById("splash-left").innerHTML = cleanText(input.key.left)[0]
         document.getElementById("splash-right").innerHTML = cleanText(input.key.right)[0]
+        document.getElementById("splash-pause").innerHTML = cleanText(input.key.pause)[0]
+        document.getElementById("splash-fullscreen").innerHTML = cleanText(input.key.fullscreen)[0]
         document.getElementById("splash-next-gun").innerHTML = cleanText(input.key.nextGun)[0]
         document.getElementById("splash-previous-gun").innerHTML = cleanText(input.key.previousGun)[0]
 
@@ -1280,6 +1300,7 @@ const input = {
         document.getElementById("key-left").style.background = backgroundColor
         document.getElementById("key-right").style.background = backgroundColor
         document.getElementById("key-pause").style.background = backgroundColor
+        document.getElementById("key-fullscreen").style.background = backgroundColor
         document.getElementById("key-next-gun").style.background = backgroundColor
         document.getElementById("key-previous-gun").style.background = backgroundColor
         document.getElementById("key-testing").style.background = backgroundColor
@@ -1327,6 +1348,9 @@ const input = {
                     break;
                 case "key-pause":
                     input.key.pause = event.code
+                    break;
+                case "key-fullscreen":
+                    input.key.fullscreen = event.code
                     break;
                 case "key-next-gun":
                     input.key.nextGun = event.code
@@ -1427,64 +1451,130 @@ window.addEventListener("keydown", function (event) {
                 input.isPauseKeyReady = false
                 setTimeout(function () { input.isPauseKeyReady = true }, 300);
                 if (simulation.isChoosing) {
-
                     build.pauseGrid()
-
                 } else if (simulation.paused) {
                     if (document.activeElement !== document.getElementById('sort-input')) {
                         build.unPauseGrid()
                         simulation.paused = false;
                         // level.levelAnnounce();
                         document.body.style.cursor = "none";
-                        requestAnimationFrame(cycle);
+                        requestAnimationFrame(cycle); //restart time
+
+                        if (document.fullscreenElement && !simulation.onTitlePage && !build.isExperimentSelection && !simulation.isChoosing) {
+                            canvas.requestPointerLock();
+                            mouseMove.isPointerLocked = true
+                            mouseMove.reset()
+                        }
                     }
-                } else {  //if (!tech.isNoDraftPause)
+                } else {
                     simulation.paused = true;
                     build.pauseGrid()
                     document.body.style.cursor = "auto";
-
-                    if (tech.isPauseSwitchField || simulation.testing) {
-                        document.getElementById("pause-field-previous").addEventListener("click", () => {
-                            const energy = m.energy //save current energy
-                            if (m.fieldMode === 4 && simulation.molecularMode > 0) {
-                                simulation.molecularMode--
-                                m.fieldUpgrades[4].description = m.fieldUpgrades[4].setDescription()
-                            } else {
-                                m.setField((m.fieldMode < 2) ? m.fieldUpgrades.length - 1 : m.fieldMode - 1) //cycle to previous field, skip field emitter
-                                if (m.fieldMode === 4) {
-                                    simulation.molecularMode = 3
-                                    m.fieldUpgrades[4].description = m.fieldUpgrades[4].setDescription()
-                                }
-                            }
-                            m.energy = energy //return to current energy
-                            document.getElementById("pause-field").style.backgroundImage = `url('img/field/${m.fieldUpgrades[m.fieldMode].name}${m.fieldMode === 0 ? Math.floor(Math.random() * 10) : ""}.webp')`
-                            document.getElementById("pause-field").innerHTML = `<div class="card-text"> <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[m.fieldMode].name)}</div>${m.fieldUpgrades[m.fieldMode].description}</div>`
-                        });
-
-                        document.getElementById("pause-field-next").addEventListener("click", () => {
-                            const energy = m.energy //save current energy
-                            if (m.fieldMode === 4 && simulation.molecularMode < 3) {
-                                simulation.molecularMode++
-                                m.fieldUpgrades[4].description = m.fieldUpgrades[4].setDescription()
-                            } else {
-                                m.setField((m.fieldMode === m.fieldUpgrades.length - 1) ? 1 : m.fieldMode + 1) //cycle to next field, skip field emitter
-                                if (m.fieldMode === 4) {
-                                    simulation.molecularMode = 0
-                                    m.fieldUpgrades[4].description = m.fieldUpgrades[4].setDescription()
-                                }
-                            }
-                            m.energy = energy //return to current energy
-                            // document.getElementById("pause-field").innerHTML = `<div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${m.fieldUpgrades[m.fieldMode].name}</div> ${m.fieldUpgrades[m.fieldMode].description}`
-                            document.getElementById("pause-field").style.backgroundImage = `url('img/field/${m.fieldUpgrades[m.fieldMode].name}${m.fieldMode === 0 ? Math.floor(Math.random() * 10) : ""}.webp')`
-                            document.getElementById("pause-field").innerHTML = `<div class="card-text"> <div class="grid-title"><div class="circle-grid field"></div> &nbsp; ${build.nameLink(m.fieldUpgrades[m.fieldMode].name)}</div> ${m.fieldUpgrades[m.fieldMode].description}</div>`
-                        });
+                    if (document.fullscreenElement) {
+                        document.exitPointerLock();
+                        mouseMove.isPointerLocked = false
+                        mouseMove.reset()
                     }
                 }
             }
             break
+        case input.key.fullscreen:
+            // Escape key will also automatically exit pointer lock and fullscreen
+            // console.log(document.activeElement !== document.getElementById('sort-input'), document.activeElement)
+
+
+            // const onFullscreenChange = () => {
+            //     if (document.fullscreenElement) { // Make sure we entered, not exited
+            //         input.reset();
+
+            //         if (!simulation.onTitlePage && !build.isExperimentSelection && !simulation.paused && !simulation.isChoosing) {
+            //             canvas.requestPointerLock();
+            //             mouseMove.isPointerLocked = true;
+            //             mouseMove.reset();
+            //         } else {
+            //             mouseMove.isLockPointer = true;
+            //             document.body.addEventListener('mousedown', mouseMove.pointerUnlock);
+            //         }
+            //     }
+            // };
+
+            // // Add the listener that runs only once.
+            // document.addEventListener('fullscreenchange', onFullscreenChange, { once: true });
+
+            // // Now, request fullscreen.
+            // document.documentElement.requestFullscreen().catch(err => {
+            //     // If the request fails, the 'fullscreenchange' event will never fire,
+            //     // so the listener we added will just be garbage collected. No cleanup needed.
+            //     console.error('Error attempting to enable fullscreen:', err);
+            // });
+            const hasPointerLock = () => {
+                return 'pointerLockElement' in document ||
+                    'mozPointerLockElement' in document ||
+                    'webkitPointerLockElement' in document;
+            };
+
+            if (document.activeElement !== document.getElementById('sort-input') && hasPointerLock()) {//not typing "o" in the sort text menu
+                if (document.fullscreenElement) { //exit fullscreen mode if in fullscreen
+                    document.exitPointerLock();
+                    mouseMove.isPointerLocked = false
+                    mouseMove.reset()
+                    document.exitFullscreen();
+                    input.reset(); //to prevent key ghosting reset all input keys
+
+
+
+                } else if (mouseMove.isMouseInWindow) { //if mouse is in the window enter fullscreen
+                    document.documentElement.requestFullscreen().then(() => {//wait for fullscreen to be ready
+                        input.reset(); //to prevent key ghosting reset all input keys
+                        //request pointer lock, but not if in a game situation that needs the traditional mouse
+                        if (!simulation.onTitlePage && !build.isExperimentSelection && !simulation.paused && !simulation.isChoosing) {
+                            canvas.requestPointerLock();
+                            mouseMove.isPointerLocked = true
+                            mouseMove.reset()
+                        } else {
+                            // mouseMove.isLockPointer = true
+                            // document.body.addEventListener('mousedown', mouseMove.pointerUnlock, { once: true });//watches for mouse clicks that exit draft mode and self removes
+                            document.addEventListener('mousedown', mouseMove.pointerUnlock, { once: true })
+                        }
+                    }).catch(err => {
+                        console.error('Error attempting to enable fullscreen:', err);
+                    });
+                }
+            }
+
+
+
+
+
+            // if (document.fullscreenElement && document.activeElement !== document.getElementById('sort-input')) {
+            //     document.exitPointerLock();
+            //     mouseMove.isPointerLocked = false
+            //     mouseMove.reset()
+            //     document.exitFullscreen();
+            //     input.reset(); //to prevent key ghosting reset all input keys
+            // } else if (document.activeElement !== document.getElementById('sort-input') && mouseMove.isMouseInWindow) {
+            //     document.documentElement.requestFullscreen().then(() => {
+            //         input.reset(); //to prevent key ghosting reset all input keys
+
+            //         // Small delay to ensure fullscreen is established, then lock pointer to canvas
+            //         if (!simulation.onTitlePage && !build.isExperimentSelection && !simulation.paused && !simulation.isChoosing) {
+            //             setTimeout(() => {
+            //                 canvas.requestPointerLock();
+            //                 mouseMove.isPointerLocked = true
+            //                 mouseMove.reset()
+            //             }, 100);
+            //         } else {
+            //             mouseMove.isLockPointer = true
+            //             document.body.addEventListener('mousedown', mouseMove.pointerUnlock);//watches for mouse clicks that exit draft mode and self removes
+            //         }
+            //     }).catch(err => {
+            //         console.error('Error attempting to enable fullscreen:', err);
+            //     });
+            // }
+            break
         case input.key.testing:
             if (m.alive && localSettings.loreCount > 0 && !simulation.paused && !build.isExperimentSelection) {
-                if (simulation.difficultyMode > 5) {
+                if (simulation.difficultyMode > 6) {
                     simulation.inGameConsole("<em>testing mode disabled for this difficulty</em>");
                     break
                 }
@@ -1532,7 +1622,7 @@ window.addEventListener("keydown", function (event) {
                 </tr>
                 <tr>
                     <td class='key-input-pause'>Y</td>
-                    <td class='key-used'>random tech</td>
+                    <td class='key-used'>experiment menu</td>
                 </tr>
                 <tr>
                     <td class='key-input-pause'>U</td>
@@ -1543,8 +1633,12 @@ window.addEventListener("keydown", function (event) {
                     <td class='key-used'>clear mobs</td>
                 </tr>
                 <tr>
-                    <td class='key-input-pause'>I/O</td>
-                    <td class='key-used'>zoom in / out</td>
+                    <td class='key-input-pause'>–/+</td>
+                    <td class='key-used'>zoom out / in</td>
+                </tr>
+                <tr>
+                    <td class='key-input-pause'>9</td>
+                    <td class='key-used'>level warp</td>
                 </tr>
                 <tr>
                     <td class='key-input-pause'>1-8</td>
@@ -1603,13 +1697,13 @@ window.addEventListener("keydown", function (event) {
     if (simulation.testing) {
         if (event.key === "X") m.death(); //only uppercase
         switch (event.key.toLowerCase()) {
-            case "o":
+            case "-":
                 // simulation.isAutoZoom = false;
                 // simulation.zoomScale /= 0.9;
                 // simulation.setZoom();
                 simulation.zoomTransition(simulation.zoomScale / 0.9)
                 break;
-            case "i":
+            case "=":
                 // simulation.isAutoZoom = false;
                 // simulation.zoomScale *= 0.9;
                 // simulation.setZoom();
@@ -1637,11 +1731,13 @@ window.addEventListener("keydown", function (event) {
                 spawn.bodyRect(simulation.mouseInGame.x, simulation.mouseInGame.y, 50, 50);
                 break
             case "7":
-                const pick = spawn.fullPickList[Math.floor(Math.random() * spawn.fullPickList.length)];
-                spawn[pick](simulation.mouseInGame.x, simulation.mouseInGame.y);
+                spawn.randomMobByLevelsCleared(simulation.mouseInGame.x, simulation.mouseInGame.y)
                 break
             case "8":
                 spawn.randomLevelBoss(simulation.mouseInGame.x, simulation.mouseInGame.y);
+                break
+            case "9":
+                powerUps.warp.effect()
                 break
             case "f":
                 const mode = (m.fieldMode === m.fieldUpgrades.length - 1) ? 0 : m.fieldMode + 1
@@ -1667,7 +1763,12 @@ window.addEventListener("keydown", function (event) {
                 m.energy = m.maxEnergy
                 break
             case "y":
-                tech.giveTech()
+                simulation.paused = true;
+                build.isExperimentSelection = true;
+                build.populateGrid();
+                document.getElementById("experiment-grid").style.display = "grid";
+                Object.assign(document.body.style, { overflowY: "scroll", overflowX: "hidden", cursor: "auto" });
+                if (document.pointerLockElement) document.exitPointerLock();
                 break
             case "b":
                 tech.isRerollDamage = true
@@ -1711,14 +1812,93 @@ window.addEventListener("keydown", function (event) {
         }
     }
 });
+
+//exit fullscreen if you switch programs
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && document.fullscreenElement) {
+        document.exitFullscreen();
+    }
+});
 //mouse move input
-function mouseMoveDefault(e) {
-    simulation.mouse.x = e.clientX;
-    simulation.mouse.y = e.clientY;
+const mouseMove = {
+    active(e) { },//this controls how the mouse is updated in the mousemove event based on 1 of the 4 methods below
+    default(e) {
+        simulation.mouse.x = e.clientX;
+        simulation.mouse.y = e.clientY;
+    },
+    pointerLocked(e) {
+        simulation.mouse.x += e.movementX;
+        simulation.mouse.y += e.movementY;
+        //keep mouse inside canvas
+        if (simulation.mouse.x < 0) simulation.mouse.x = 0
+        if (simulation.mouse.x > canvas.width) simulation.mouse.x = canvas.width
+        if (simulation.mouse.y < 0) simulation.mouse.y = 0
+        if (simulation.mouse.y > canvas.height) simulation.mouse.y = canvas.height
+    },
+    inverted(e) {
+        simulation.mouse.x = e.clientX;
+        simulation.mouse.y = window.innerHeight - e.clientY;
+    },
+    invertedPointerLocked(e) {
+        simulation.mouse.x += e.movementX;
+        simulation.mouse.y -= e.movementY;
+        //keep mouse inside canvas
+        if (simulation.mouse.x < 0) simulation.mouse.x = 0
+        if (simulation.mouse.x > canvas.width) simulation.mouse.x = canvas.width
+        if (simulation.mouse.y < 0) simulation.mouse.y = 0
+        if (simulation.mouse.y > canvas.height) simulation.mouse.y = canvas.height
+    },
+    // isLockPointer: false,//use to lock pointer in the mousedown eventlistener
+    isPointerLocked: false, //tracks the pointer locked state
+    isMouseInWindow: true,
+    pointerUnlock() { //event
+        setTimeout(() => {
+            if (document.fullscreenElement && !simulation.onTitlePage && !build.isExperimentSelection && !simulation.paused) {
+                // mouseMove.isLockPointer = false
+                canvas.requestPointerLock();
+                mouseMove.isPointerLocked = true
+                mouseMove.reset()
+            }
+            // else if (!mouseMove.isLockPointer || !document.fullscreenElement) {
+            //     mouseMove.isLockPointer = false
+            // }
+            // document.body.removeEventListener('mousedown', mouseMove.pointerUnlock); //remove self so it can't trigger
+        }, 100);
+    },
+    reset() {//sets mouseMove.active based on inverted and pointer lock
+        if (simulation.isInvertedVertical) {
+            // simulation.mouse.y = canvas.height - simulation.mouse.y
+            if (mouseMove.isPointerLocked) {
+                mouseMove.active = mouseMove.invertedPointerLocked
+            } else {
+                mouseMove.active = mouseMove.inverted
+            }
+        } else {
+            if (mouseMove.isPointerLocked) {
+                mouseMove.active = mouseMove.pointerLocked
+            } else {
+                mouseMove.active = mouseMove.default
+                // if (true) {
+                //     //show where mouse is
+                //     simulation.ephemera.push({
+                //         count: 30, //cycles before it self removes
+                //         do() {
+                //             this.count--
+                //             if (this.count < 0) simulation.removeEphemera(this)
+                //             ctx.beginPath();
+                //             ctx.arc(simulation.mouse.x, -simulation.mouse.y, 50, 0, 2 * Math.PI);
+                //             ctx.fillStyle = "#f00"
+                //             ctx.fill();
+                //         },
+                //     })
+                // }
+            }
+        }
+    },
 }
-let mouseMove = mouseMoveDefault
+mouseMove.reset()
 document.body.addEventListener("mousemove", (e) => {
-    mouseMove(e)
+    mouseMove.active(e)
 });
 
 document.body.addEventListener("mouseup", (e) => {
@@ -1737,6 +1917,16 @@ document.body.addEventListener("mousedown", (e) => {
     } else if (e.button === 2) {
         input.field = true;
     }
+    //reenable pointer lock after choosing
+    // mouseMove.isLockPointer = true
+    // setTimeout(() => {
+    //     if (mouseMove.isLockPointer && document.fullscreenElement && !simulation.onTitlePage && !build.isExperimentSelection && !simulation.paused) {
+    //         mouseMove.isLockPointer = false
+    //         canvas.requestPointerLock();
+    //         mouseMove.isPointerLocked = true
+    //         mouseMove.reset()
+    //     }
+    // }, 100);
 });
 
 document.body.addEventListener("mouseenter", (e) => { //prevents mouse getting stuck when leaving the window
@@ -1745,6 +1935,7 @@ document.body.addEventListener("mouseenter", (e) => { //prevents mouse getting s
     } else {
         input.fire = false;
     }
+    mouseMove.isMouseInWindow = true
 
     // if (e.button === 3) {
     //     input.field = true;
@@ -1759,6 +1950,7 @@ document.body.addEventListener("mouseleave", (e) => { //prevents mouse getting s
     } else {
         input.fire = false;
     }
+    mouseMove.isMouseInWindow = false
 
     // if (e.button === 3) {
     //     input.field = true;
@@ -1780,6 +1972,7 @@ document.body.addEventListener("wheel", (e) => {
     passive: true
 });
 
+
 //**********************************************************************
 //  local storage
 //**********************************************************************
@@ -1793,8 +1986,17 @@ function localStorageCheck() {
     }
 
 }
+// if (localStorageCheck()) {
+//     localSettings = JSON.parse(localStorage.getItem("localSettings"))
+//     if (localSettings) {
+//         console.log('localStorage is enabled')
 if (localStorageCheck()) {
-    localSettings = JSON.parse(localStorage.getItem("localSettings"))
+    try {
+        localSettings = JSON.parse(localStorage.getItem("localSettings"))
+    } catch (error) {
+        console.warn("Ignoring invalid localSettings data", error)
+        localSettings = null
+    }
     if (localSettings) {
         console.log('localStorage is enabled')
         localSettings.isAllowed = true
@@ -1816,7 +2018,7 @@ if (localStorageCheck()) {
 if (localSettings.isAllowed && !localSettings.isEmpty) {
     console.log('restoring previous settings')
 
-    if (localSettings.key) {
+    if (localSettings.key && localSettings.key.fullscreen) {
         input.key = localSettings.key
     } else {
         input.setDefault()
@@ -1851,12 +2053,17 @@ if (localSettings.isAllowed && !localSettings.isEmpty) {
         localSettings.loreCount = 0; //this sets what conversation is heard
         if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
     }
-    if (localSettings.isHideImages === undefined) localSettings.isHideImages = true //default to hide images
-    document.getElementById("hide-images").checked = localSettings.isHideImages
-    // localSettings.isHideImages = true //no images
 
-    if (localSettings.isHideHUD === undefined) localSettings.isHideHUD = true
+    if (localSettings.isHideHUD === undefined) localSettings.isHideHUD = false
     document.getElementById("hide-hud").checked = localSettings.isHideHUD
+
+    if (localSettings.showDmgNumbers === undefined) localSettings.showDmgNumbers = true
+    document.getElementById("show-num").checked = localSettings.showDmgNumbers
+
+    if (!["youtube", "spotify", "apple"].includes(localSettings.musicService)) {
+        localSettings.musicService = "youtube"
+        localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+    }
 
     if (localSettings.difficultyCompleted === undefined) {
         localSettings.difficultyCompleted = [null, false, false, false, false, false, false, false] //null because there isn't a difficulty zero
@@ -1864,11 +2071,17 @@ if (localSettings.isAllowed && !localSettings.isEmpty) {
     }
 
     if (localSettings.difficultyMode === undefined) localSettings.difficultyMode = "2"
-    simulation.difficultyMode = localSettings.difficultyMode
-    lore.setTechGoal()
+    //Individual selections are restored below, after default settings are initialized.
 
     if (localSettings.pauseMenuDetailsOpen === undefined) {
-        localSettings.pauseMenuDetailsOpen = [true, false, false, true]
+        localSettings.pauseMenuDetailsOpen = [true, false, false, true, false]
+        localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+    } else if (localSettings.pauseMenuDetailsOpen[4] === undefined) {
+        localSettings.pauseMenuDetailsOpen[4] = false
+        localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+    }
+    if (localSettings.techHistory === undefined) {
+        localSettings.techHistory = []
         localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
     }
 } else {
@@ -1890,38 +2103,35 @@ if (localSettings.isAllowed && !localSettings.isEmpty) {
         isLoreDoesNotNeedReset: false,
         isHuman: false,
         key: undefined,
-        isHideImages: true, //default to hide images
         isHideHUD: false,
-        pauseMenuDetailsOpen: [true, false, false, true]
+        showDmgNumbers: false,
+        musicService: "youtube",
+        pauseMenuDetailsOpen: [true, false, false, true, false],
+        techHistory: [],
     };
     input.setDefault()
     if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
     document.getElementById("community-maps").checked = localSettings.isCommunityMaps
     simulation.isCommunityMaps = localSettings.isCommunityMaps
-    document.getElementById("hide-images").checked = localSettings.isHideImages
     document.getElementById("fps-select").value = localSettings.fpsCapDefault
     document.getElementById("banned").value = localSettings.banList
 }
+simulation.difficultyOptions = localSettings.difficultyOptions ? powerUps.difficulty.normalize(localSettings.difficultyOptions) : powerUps.difficulty.fromLegacy(localSettings.difficultyMode);
+localSettings.difficultyOptions = { ...simulation.difficultyOptions };
+powerUps.difficulty.updateScale();
+lore.setTechGoal();
 document.getElementById("control-testing").style.visibility = (localSettings.loreCount === 0) ? "hidden" : "visible"
 // document.getElementById("experiment-button").style.visibility = (localSettings.loreCount === 0) ? "hidden" : "visible"
 input.controlTextUpdate()
+
+if (simulation.isCommunityMaps) {
+    level.loadMoreLevels().catch(error => console.error(error))
+}
 
 
 //**********************************************************************
 // settings
 //**********************************************************************
-
-
-// difficulty-select-experiment event listener is set in build.makeGrid
-// document.getElementById("difficulty-select").addEventListener("input", () => {
-//     simulation.difficultyMode = Number(document.getElementById("difficulty-select").value)
-//     lore.setTechGoal()
-//     localSettings.difficultyMode = simulation.difficultyMode
-//     localSettings.levelsClearedLastGame = 0 //after changing difficulty, reset run history
-//     localSettings.entanglement = undefined //after changing difficulty, reset stored tech
-//     if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
-// });
-
 
 document.getElementById("fps-select").addEventListener("input", () => {
     let value = document.getElementById("fps-select").value
@@ -1943,7 +2153,131 @@ document.getElementById("community-maps").addEventListener("input", () => {
     simulation.isCommunityMaps = document.getElementById("community-maps").checked
     localSettings.isCommunityMaps = simulation.isCommunityMaps
     if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+    if (simulation.isCommunityMaps) level.loadMoreLevels().catch(error => console.error(error))
 });
+
+// Add the Spotify and Apple Music playlist URLs to the empty strings below.
+const musicPlaylists = {
+    "instrumental": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=lDlU08RU7Tk&list=PLea2HwrA4R0E",
+            spotify: "https://open.spotify.com/playlist/2omGOxvDtT9LD0MZIjy5dU?si=hyYkufc5RNehpEMY3kAZDg",
+            apple: ""
+        },
+        youtubePlaylistId: "PLea2HwrA4R0E",
+        trackIds: [
+            "lDlU08RU7Tk", "5Cblo3sEJ8Y", "Jz1gvBluvc8", "ypqHpzTeVAU", "3et63xTh2bE", "SEWALc6ySI8", "qYMsd6pDSTc", "ZhHocqvb-uE", "BlpbLX4dMCA", "ogzsMhPajgA",
+            "BzImHGz4R0M", "n4lGd0KVmZo", "5D2u3ASuelQ", "YdQz6NltncU", "sb7797FQG5Y", "XvvGYEjloOg", "ziSEJeTPfyU", "u1fWF8uD6pw", "uEVbyd-u2X4", "5qVaP7mNphA",
+            "PamBD5B2wXk", "wwXtPu-iA4Q", "TkiyWhETiJw", "NUnXxh5U25Y", "FM7ALFsOH4g", "pYHEpDnvVPk", "2Agt3XfmccM", "GGwrLidX0o4", "WKg_QOy6tRk", "aolhrxi6IKc",
+            "li7KsxPyiTk", "zR2KomIYg-k", "m_npTC0Rvgg"
+        ]
+    },
+    "old-stuff": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=qumO-vBey2Q&list=PLbjRnln-q160",
+            spotify: "https://open.spotify.com/playlist/4u5qJNiBofLl8hg2BPnmcU?si=sOOIr-hWT3-z8XWkhG69Nw",
+            apple: ""
+        },
+        youtubePlaylistId: "PLbjRnln-q160",
+        trackIds: [
+            "qumO-vBey2Q", "UR-B4tHmaF8", "yWQezjGjiqs", "r2cbOdNLQuQ", "8Nlbj1t99m8", "8Jtokmp8zoE", "uZj032MNIx4", "u2XoqyVfc8g", "OPoSuyu0dsY", "egqv1mtos6A",
+            "OvzJZTkWYoY", "tVdr_JWmnsA", "1MXAIKXsVdg", "lSDfCdycdvk", "1nAE38dulRk", "kMXapsSOCD0", "aYCshYyFzls", "fid78ktHTi8", "G_GxaoOJFTY", "n4lGd0KVmZo",
+            "NF9Pc2FvgQU", "Vd_nkokQwnQ", "EMeN_aGKtIY", "AH1gqeAq3jU", "3A8FK3C2OOk", "oMfjgQ8ptrE", "e0NVBfCyoAc", "yIDx6WvXayg", "n6x7GiV9JWA", "whfOqPwa264",
+            "PkwdtkULcmA", "5D2u3ASuelQ", "CZ4QLs2jSWg", "hns_lKWj4zM", "MXcjg9o9HJ8", "Mgk3oOOd1io", "Vs-eS6IwEAA", "d7DWBxxEdXw", "hTUAaW3oGGo", "gQjYgR_3UqQ",
+            "HVyUqxilaYY", "XRAk8hrtB3k", "15aa3WIHk5M", "nqhXgO1iA1I", "LfCm57XdpO0", "zuuyR7vrL6M", "MFHwrH3J57s", "Nt9bkgRQbLs", "FwNVTYwFXS0", "7vFGKHzY_38",
+            "KvaxYUfGHnk", "ZLLccZfVV20", "DD-5_lCEMHY", "-5yXN2hvkyg", "rHQrSx9LRN8", "FuJDNYT3n0w", "YdQz6NltncU", "sb7797FQG5Y", "XvvGYEjloOg", "ziSEJeTPfyU",
+            "5qVaP7mNphA", "GylmMVT5C8Q", "9zOKBvHNWus", "YLp2cW7ICCU", "2ObjtVdsV3I", "AB2yBmZi3yo", "LnDwBrm_jsY", "Enzxdvo8NOk", "I6OR9gOMyv0", "aBKEt3MhNMM",
+            "KMXNiw4H6qA", "_NywTcGOUkE", "bgJ-hyzl6jg", "f8_EpxhNEsA", "gQLvhLbs3X4", "wwXtPu-iA4Q", "CXHz_6qmHFg", "d6nNz9At9Tc", "DiHFk7ArzYc", "vEjRMVPydOQ",
+            "GGwrLidX0o4", "TkiyWhETiJw", "NUnXxh5U25Y", "FM7ALFsOH4g", "_fTWmUlTEqE", "pYHEpDnvVPk", "i0GC7Oo_Zo4", "g0az4OkM02Y", "2Agt3XfmccM"
+        ]
+    },
+    "hollow-knight": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=NSlkW1fFkyo&list=PLmOldskd2VbL7_t-NE9p6rEboq_v0AHko",
+            spotify: "https://open.spotify.com/album/2eWzQP7WEiAEhbg7HHIHR9",
+            apple: "https://music.apple.com/us/album/hollow-knight-original-soundtrack/1263341718"
+        }
+    },
+    "silksong": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=yUfD7w5y3Ug&list=PLbNT78Q7M14yC4iIN4RaQqGa6q6zY6bqc",
+            spotify: "https://open.spotify.com/album/2IsamtSh2nFGio5SnXmwWq",
+            apple: "https://music.apple.com/us/album/hollow-knight-silksong-original-soundtrack/1838949732"
+        }
+    },
+    "animal-well": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=yccb86YuwXs&list=PLS7HzNXh-PwozVLyFxG3a7-0HplJwKPY2",
+            spotify: "",
+            apple: ""
+        }
+    },
+    "disco-elysium": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=qMUoWTEIGx4&list=OLAK5uy_n_Y491JJMFBAxR3v_o5LLTgu20URfxpuw",
+            spotify: "https://open.spotify.com/album/5IhBwGYrQotmDvfLcdIj8R",
+            apple: "https://music.apple.com/us/album/disco-elysium/1659525966"
+        }
+    },
+    "undertale": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=3BR7-AzE2dQ&list=OLAK5uy_ljXkQlhVlWyV7BxSxMMzgOLbzYS_-JPt4",
+            spotify: "https://open.spotify.com/album/2M2Ae2SvZe3fmzUtlVOV5Z",
+            apple: "https://music.apple.com/us/album/undertale-soundtrack/1528217465"
+        }
+    },
+    "deltarune": {
+        links: {
+            youtube: "https://music.youtube.com/watch?v=XEdoMoV4D6k&list=OLAK5uy_kidGzGmzCUSJK1LAtIh7ngZwRF9MT3qjE",
+            spotify: "https://open.spotify.com/album/6putGW0KxGMrgTZzplp2pF",
+            apple: "https://music.apple.com/us/album/deltarune-chapter-1-original-game-soundtrack/1443475587"
+        }
+    }
+}
+
+const musicServiceNames = {
+    youtube: "YouTube",
+    spotify: "Spotify",
+    apple: "Apple Music"
+}
+
+function updateMusicLinks() {
+    const service = localSettings.musicService
+    for (const select of document.querySelectorAll("[data-music-service]")) select.value = service
+    for (const link of document.querySelectorAll("[data-music-playlist]")) {
+        const playlist = musicPlaylists[link.dataset.musicPlaylist]
+        const url = playlist && playlist.links[service]
+        if (url) {
+            link.href = url
+            link.classList.remove("music-link-unavailable")
+            link.removeAttribute("aria-disabled")
+            link.removeAttribute("title")
+        } else {
+            link.removeAttribute("href")
+            link.classList.add("music-link-unavailable")
+            link.setAttribute("aria-disabled", "true")
+            link.title = `${musicServiceNames[service]} link not added yet`
+        }
+    }
+}
+
+document.addEventListener("input", event => {
+    if (!event.target.matches("[data-music-service]")) return
+    localSettings.musicService = event.target.value
+    if (localSettings.isAllowed) localStorage.setItem("localSettings", JSON.stringify(localSettings)); //update local storage
+    updateMusicLinks()
+})
+
+document.addEventListener("click", event => {
+    const link = event.target.closest && event.target.closest("[data-music-playlist]")
+    if (!link || localSettings.musicService !== "youtube") return
+    const playlist = musicPlaylists[link.dataset.musicPlaylist]
+    if (!playlist || !playlist.trackIds) return
+    const trackId = playlist.trackIds[Math.floor(Math.random() * playlist.trackIds.length)]
+    link.href = `https://music.youtube.com/watch?v=${trackId}&list=${playlist.youtubePlaylistId}`
+})
+
+updateMusicLinks()
 
 document.getElementById("updates").addEventListener("toggle", function () {
     function loadJSON(path, success, error) { //generic function to get JSON
@@ -1985,7 +2319,7 @@ document.getElementById("updates").addEventListener("toggle", function () {
 
 
 
-    let text = `<pre><strong>n-gon</strong>: <a href="https://github.com/landgreen/n-gon/blob/master/todo.txt">todo list</a> and complete <a href="https://github.com/landgreen/n-gon/commits/master">change-log</a><hr>`
+    let text = `<pre><strong>n-gon</strong>: <a href="https://github.com/landgreen/n-gon/blob/master/todo.txt">todo list</a>, complete <a href="https://github.com/landgreen/n-gon/commits/master">change-log</a>, commit <a href="https://www.cornbread2100.com/n-gon-loader">loader</a><hr>`
     document.getElementById("updates-div").innerHTML = text
 
     ///  https://api.github.com/repos/landgreen/n-gon/stats/commit_activity
@@ -1998,11 +2332,13 @@ document.getElementById("updates").addEventListener("toggle", function () {
             //     text += "<br><em>https://github.com/landgreen/n-gon/</em>: hash does <strong>not</strong> match latest version<br><hr>"
             // }
             for (let i = 0, len = 20; i < len; i++) {
-                text += "<strong>" + data[i].commit.author.date.substr(0, 10) + "</strong> - "; //+ "<br>"
-                text += data[i].commit.message
-                if (i < len - 1) text += "<hr>"
+                if (data[i].commit.message !== "quick bug fix") {
+                    text += "<strong>" + data[i].commit.author.date.substr(0, 10) + "</strong> - "; //+ "<br>"
+                    text += data[i].commit.message
+                    if (i < len - 1) text += "<hr>"
+                }
             }
-            text += "</pre>"
+            text += `</pre><hr><em>complete <a href="https://github.com/landgreen/n-gon/commits/master">change-log</a></em>`
             document.getElementById("updates-div").innerHTML = text.replace(/\n/g, "<br />")
         },
         function (xhr) {
@@ -2046,56 +2382,7 @@ const sound = {
     }
 }
 
-// preload images so they load cleaner
-// MDN Scripting and preloads - https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/preload
-// if (!localSettings.isHideImages) {
-//     for (let i = 0, len = b.guns.length; i < len; i++) {
-//         const preloadLink = document.createElement("link");
-//         preloadLink.href = "img/gun/" + b.guns[i].name + ".webp";
-//         preloadLink.rel = "preload";
-//         preloadLink.as = "image";
-//         document.head.appendChild(preloadLink);
-//     }
-//     for (let i = 1, len = m.fieldUpgrades.length; i < len; i++) {
-//         const preloadLink = document.createElement("link");
-//         preloadLink.href = "img/field/" + m.fieldUpgrades[i].name + ".webp";
-//         preloadLink.rel = "preload";
-//         preloadLink.as = "image";
-//         document.head.appendChild(preloadLink);
-//     }
-//     for (let i = 0, len = tech.tech.length; i < len; i++) {
-//         if (!tech.tech[i].isJunk) {
-//             const preloadLink = document.createElement("link");
-//             preloadLink.href = "img/" + tech.tech[i].name + ".webp";
-//             preloadLink.rel = "preload";
-//             preloadLink.as = "image";
-//             document.head.appendChild(preloadLink);
-//         }
-//     }
-// }
-
-
-//preload images early
-if (!localSettings.isHideImages) {
-    addEventListener("load", () => {
-        let urls = new Array()
-        for (let i = 0, len = b.guns.length; i < len; i++) urls.push("img/gun/" + b.guns[i].name + ".webp")
-        for (let i = 1, len = m.fieldUpgrades.length; i < len; i++) urls.push("img/field/" + m.fieldUpgrades[i].name + ".webp")
-        for (let i = 0, len = tech.tech.length; i < len; i++) {
-            if (!tech.tech[i].isJunk && !tech.tech[i].isLore) urls.push("img/" + tech.tech[i].name + ".webp")
-        }
-        let images = new Array()
-        for (let i = 0; i < urls.length; i++) {
-            images[i] = new Image()
-            images[i].src = urls[i]
-        }
-        // console.log(urls, images)
-    });
-    document.getElementById("choose-grid").classList.add('choose-grid');
-} else {
-    document.getElementById("choose-grid").classList.add('choose-grid-no-images');
-}
-
+document.getElementById("choose-grid").classList.add('choose-grid-no-images');
 
 //**********************************************************************
 // main loop 
@@ -2119,59 +2406,3 @@ function cycle() {
         simulation.loop();
     }
 }
-
-// function cycle() {
-//     if (!simulation.paused) requestAnimationFrame(cycle);
-//     const now = Date.now();
-//     const elapsed = now - simulation.then; // calc elapsed time since last loop
-//     if (elapsed > simulation.fpsInterval) { // if enough time has elapsed, draw the next frame
-//         simulation.then = now - (elapsed % simulation.fpsInterval); // Get ready for next frame by setting then=now.   Also, adjust for fpsInterval not being multiple of 16.67
-
-//         simulation.cycle++; //tracks game cycles
-//         m.cycle++; //tracks player cycles  //used to alow time to stop for everything, but the player
-//         if (simulation.clearNow) {
-//             simulation.clearNow = false;
-//             simulation.clearMap();
-//             level.start();
-//         }
-//         simulation.loop();
-//     }
-// }
-
-// let timeStart = performance.now()
-// //0,  16.6666666666,   33.333333333333, 50.000000000
-// function cycle(timestamp) {
-//     if (!simulation.paused) requestAnimationFrame(cycle);
-//     if (timestamp - timeStart > 0) { //simulation.fpsInterval) { // if enough time has elapsed, draw the next frame
-//         console.log(timestamp - timeStart)
-//         timeStart = timestamp
-//         simulation.cycle++; //tracks game cycles
-//         m.cycle++; //tracks player cycles  //used to alow time to stop for everything, but the player
-//         if (simulation.clearNow) {
-//             simulation.clearNow = false;
-//             simulation.clearMap();
-//             level.start();
-//         }
-//         simulation.loop();
-//     }
-// }
-
-// let count = 1
-// let timeStart = performance.now()
-// const cycle = (timestamp) => {
-//     // if (timeStart === undefined) timeStart = timestamp
-//     // console.log(timestamp, timeStart)
-//     if (timestamp - timeStart > tech.brainStormDelay * count) {
-//         count++
-//         powerUps.tech.effect();
-//         document.getElementById("choose-grid").style.pointerEvents = "auto"; //turn off the normal 500ms delay
-//         document.body.style.cursor = "auto";
-//         document.getElementById("choose-grid").style.transitionDuration = "0s";
-//     }
-//     if (count < 5 && simulation.isChoosing) {
-//         requestAnimationFrame(cycle);
-//     } else {
-//         tech.isBrainstormActive = false
-//     }
-// }
-// requestAnimationFrame(cycle);
