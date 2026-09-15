@@ -1,0 +1,43 @@
+name: js Folder Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (shallow)
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 1
+
+      - name: Enable sparse checkout
+        run: |
+          git sparse-checkout init --cone
+          git sparse-checkout set js
+
+      - name: Commit js-only tree
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add .
+          git commit -m "Keep only js folder" || echo "No changes to commit"
+
+      - name: Push to js-only branch
+        run: |
+          git push origin HEAD:js-only
+
+      - name: Zip js folder
+        run: zip -r js.zip js
+
+      - name: Create release with zip
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ultrakill-v1.0
+          name: js Folder Release
+          body: |
+            This release contains only the `js` folder from the original repo.
+          files: js.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
