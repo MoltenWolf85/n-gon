@@ -1,0 +1,38 @@
+name: Create Asset-Only Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Crucial permission required to create releases
+      
+    steps:
+      # STEP 1: We intentionally skip actions/checkout. No code is downloaded.
+      
+      # STEP 2: Fetch or generate the files you want to include from outside the repo
+      - name: Gather Release Assets
+        run: |
+          echo "Fetching assets..."
+          # Example: Pulling a built binary or asset from an external URL
+          curl -L -o artifact.pdf https://w3.org
+          
+          # Or generating text/metadata configs right on the fly
+          echo "Release Metadata: Generated at $(date)" > release-notes.txt
+
+      # STEP 3: Create the release and upload the assets using GitHub CLI
+      - name: Create Release and Upload Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.event.inputs.tag_name }}" \
+            --title "Release ${{ github.event.inputs.tag_name }}" \
+            --notes "This release contains only compiled assets and no repository source code." \
+            artifact.pdf release-notes.txt
